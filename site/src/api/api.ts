@@ -1009,6 +1009,33 @@ class ApiMethods {
 		return response.data;
 	};
 
+	templateVersionDynamicParameters = (
+		userId: string,
+		versionId: string,
+		{
+			onMessage,
+			onError,
+		}: {
+			onMessage: (response: TypesGen.DynamicParametersResponse) => void;
+			onError: (error: Error) => void;
+		},
+	): WebSocket => {
+		const socket = createWebSocket(
+			`/api/v2/users/${userId}/templateversions/${versionId}/parameters`,
+		);
+
+		socket.addEventListener("message", (event) =>
+			onMessage(JSON.parse(event.data) as TypesGen.DynamicParametersResponse),
+		);
+
+		socket.addEventListener("error", () => {
+			onError(new Error("Connection for dynamic parameters failed."));
+			socket.close();
+		});
+
+		return socket;
+	};
+
 	/**
 	 * @param organization Can be the organization's ID or name
 	 */
