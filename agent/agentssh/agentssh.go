@@ -113,9 +113,14 @@ type Config struct {
 	BlockFileTransfer bool
 	// ReportConnection.
 	ReportConnection reportConnectionFunc
-	// Experimental: allow connecting to running containers if
-	// CODER_AGENT_DEVCONTAINERS_ENABLE=true.
-	ExperimentalDevContainersEnabled bool
+	// Experimental: allow connecting to running containers via Docker exec.
+	// Note that this is different from the devcontainers feature, which uses
+	// subagents.
+	ExperimentalContainers bool
+	// X11Net allows overriding the networking implementation used for X11
+	// forwarding listeners. When nil, a default implementation backed by the
+	// standard library networking package is used.
+	X11Net X11Network
 }
 
 type Server struct {
@@ -129,9 +134,10 @@ type Server struct {
 	// a lock on mu but protected by closing.
 	wg sync.WaitGroup
 
-	Execer agentexec.Execer
-	logger slog.Logger
-	srv    *ssh.Server
+	Execer       agentexec.Execer
+	logger       slog.Logger
+	srv          *ssh.Server
+	x11Forwarder *x11Forwarder
 
 	config *Config
 
@@ -187,6 +193,20 @@ func NewServer(ctx context.Context, logger slog.Logger, prometheusRegistry *prom
 		config: config,
 
 		metrics: metrics,
+		x11Forwarder: &x11Forwarder{
+			logger:           logger,
+			x11HandlerErrors: metrics.x11HandlerErrors,
+			fs:               fs,
+			displayOffset:    *config.X11DisplayOffset,
+			sessions:         make(map[*x11Session]struct{}),
+			connections:      make(map[net.Conn]struct{}),
+			network: func() X11Network {
+				if config.X11Net != nil {
+					return config.X11Net
+				}
+				return osNet{}
+			}(),
+		},
 	}
 
 	srv := &ssh.Server{
@@ -435,7 +455,7 @@ func (s *Server) sessionHandler(session ssh.Session) {
 	switch ss := session.Subsystem(); ss {
 	case "":
 	case "sftp":
-		if s.config.ExperimentalDevContainersEnabled && container != "" {
+		if s.config.ExperimentalContainers && container != "" {
 			closeCause("sftp not yet supported with containers")
 			_ = session.Exit(1)
 			return
@@ -454,7 +474,7 @@ func (s *Server) sessionHandler(session ssh.Session) {
 
 	x11, hasX11 := session.X11()
 	if hasX11 {
-		display, handled := s.x11Handler(ctx, x11)
+		display, handled := s.x11Forwarder.x11Handler(ctx, session)
 		if !handled {
 			logger.Error(ctx, "x11 handler failed")
 			closeCause("x11 handler failed")
@@ -549,7 +569,7 @@ func (s *Server) sessionStart(logger slog.Logger, session ssh.Session, env []str
 
 	var ei usershell.EnvInfoer
 	var err error
-	if s.config.ExperimentalDevContainersEnabled && container != "" {
+	if s.config.ExperimentalContainers && container != "" {
 		ei, err = agentcontainers.EnvInfo(ctx, s.Execer, container, containerUser)
 		if err != nil {
 			s.metrics.sessionErrors.WithLabelValues(magicTypeLabel, ptyLabel, "container_env_info").Add(1)
@@ -1112,6 +1132,9 @@ func (s *Server) Close() error {
 	err := s.srv.Close()
 
 	s.mu.Unlock()
+
+	s.logger.Debug(ctx, "closing X11 forwarding")
+	_ = s.x11Forwarder.Close()
 
 	s.logger.Debug(ctx, "waiting for all goroutines to exit")
 	s.wg.Wait() // Wait for all goroutines to exit.
