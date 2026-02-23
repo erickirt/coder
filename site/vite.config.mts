@@ -151,7 +151,6 @@ export default defineConfig({
 			"@mui/material/FormGroup",
 			"@mui/material/FormHelperText",
 			"@mui/material/FormLabel",
-			"@mui/material/Grid",
 			"@mui/material/IconButton",
 			"@mui/material/InputAdornment",
 			"@mui/material/InputBase",
