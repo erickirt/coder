@@ -1516,6 +1516,7 @@ export interface ChatStreamEvent {
 	readonly message_part?: ChatStreamMessagePart;
 	readonly status?: ChatStreamStatus;
 	readonly error?: ChatStreamError;
+	readonly retry?: ChatStreamRetry;
 	readonly queued_messages?: readonly ChatQueuedMessage[];
 }
 
@@ -1525,6 +1526,7 @@ export type ChatStreamEventType =
 	| "message"
 	| "message_part"
 	| "queue_update"
+	| "retry"
 	| "status";
 
 export const ChatStreamEventTypes: ChatStreamEventType[] = [
@@ -1532,6 +1534,7 @@ export const ChatStreamEventTypes: ChatStreamEventType[] = [
 	"message",
 	"message_part",
 	"queue_update",
+	"retry",
 	"status",
 ];
 
@@ -1542,6 +1545,30 @@ export const ChatStreamEventTypes: ChatStreamEventType[] = [
 export interface ChatStreamMessagePart {
 	readonly role?: string;
 	readonly part: ChatMessagePart;
+}
+
+// From codersdk/chats.go
+/**
+ * ChatStreamRetry represents an auto-retry status event in the stream.
+ * Published when the server automatically retries a failed LLM call.
+ */
+export interface ChatStreamRetry {
+	/**
+	 * Attempt is the 1-indexed retry attempt number.
+	 */
+	readonly attempt: number;
+	/**
+	 * DelayMs is the backoff delay in milliseconds before the retry.
+	 */
+	readonly delay_ms: number;
+	/**
+	 * Error is the error message from the failed attempt.
+	 */
+	readonly error: string;
+	/**
+	 * RetryingAt is the timestamp when the retry will be attempted.
+	 */
+	readonly retrying_at: string;
 }
 
 // From codersdk/chats.go
