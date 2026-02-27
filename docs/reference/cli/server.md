@@ -1258,6 +1258,17 @@ The upgrade message to display to users when a client/server mismatch is detecte
 
 Support links to display in the top right drop down menu.
 
+### --external-auth-github-default-provider-enable
+
+|             |                                                                  |
+|-------------|------------------------------------------------------------------|
+| Type        | <code>bool</code>                                                |
+| Environment | <code>$CODER_EXTERNAL_AUTH_GITHUB_DEFAULT_PROVIDER_ENABLE</code> |
+| YAML        | <code>externalAuthGithubDefaultProviderEnable</code>             |
+| Default     | <code>true</code>                                                |
+
+Enable the default GitHub external auth provider managed by Coder.
+
 ### --proxy-health-interval
 
 |             |                                                  |
