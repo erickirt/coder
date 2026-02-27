@@ -396,6 +396,8 @@ export const useChatStore = (
 	const storeRef = useRef<ChatStore>(createChatStore());
 	const streamResetFrameRef = useRef<number | null>(null);
 	const queuedMessagesHydratedChatIDRef = useRef<string | null>(null);
+	const activeChatIDRef = useRef<string | null>(null);
+	const prevChatIDRef = useRef<string | undefined>(chatID);
 
 	const store = storeRef.current;
 
@@ -472,8 +474,15 @@ export const useChatStore = (
 	);
 
 	useEffect(() => {
+		// When the active chat changes, clear stale messages immediately
+		// so the previous chat's messages aren't briefly visible while
+		// the new chat's query resolves.
+		if (prevChatIDRef.current !== chatID) {
+			prevChatIDRef.current = chatID;
+			store.replaceMessages([]);
+		}
 		store.replaceMessages(chatMessages);
-	}, [chatMessages, store]);
+	}, [chatID, chatMessages, store]);
 
 	useEffect(() => {
 		store.setChatStatus(chatRecord?.status ?? null);
@@ -501,6 +510,7 @@ export const useChatStore = (
 	useEffect(() => {
 		cancelScheduledStreamReset();
 		store.resetTransientState();
+		activeChatIDRef.current = chatID ?? null;
 
 		if (!chatID) {
 			return;
@@ -535,7 +545,11 @@ export const useChatStore = (
 				}
 				cancelScheduledStreamReset();
 				const parts = pendingMessageParts.splice(0, pendingMessageParts.length);
+				const currentChatID = chatID;
 				startTransition(() => {
+					if (activeChatIDRef.current !== currentChatID) {
+						return;
+					}
 					store.applyMessageParts(parts);
 				});
 			};
@@ -561,6 +575,10 @@ export const useChatStore = (
 					case "message": {
 						const message = streamEvent.message;
 						if (!message) {
+							continue;
+						}
+						const eventChatID = asString(streamEvent.chat_id);
+						if (eventChatID && eventChatID !== chatID) {
 							continue;
 						}
 						const { changed } = store.upsertDurableMessage(message);
@@ -657,6 +675,7 @@ export const useChatStore = (
 			socket.removeEventListener("error", handleError);
 			socket.close();
 			cancelScheduledStreamReset();
+			activeChatIDRef.current = null;
 		};
 	}, [
 		cancelScheduledStreamReset,
