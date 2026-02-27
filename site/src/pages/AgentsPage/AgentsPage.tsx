@@ -1,13 +1,13 @@
 import { watchChats } from "api/api";
 import { getErrorMessage } from "api/errors";
 import {
+	archiveChat,
 	chatKey,
 	chatModelConfigs,
 	chatModels,
 	chats,
 	chatsKey,
 	createChat,
-	deleteChat,
 } from "api/queries/chats";
 import { workspaces } from "api/queries/workspaces";
 import type * as TypesGen from "api/typesGenerated";
@@ -120,7 +120,7 @@ const AgentsPage: FC = () => {
 	const chatModelsQuery = useQuery(chatModels());
 	const chatModelConfigsQuery = useQuery(chatModelConfigs());
 	const createMutation = useMutation(createChat(queryClient));
-	const archiveMutation = useMutation(deleteChat(queryClient));
+	const archiveMutation = useMutation(archiveChat(queryClient));
 	const [archivingChatId, setArchivingChatId] = useState<string | null>(null);
 	const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
 	const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
