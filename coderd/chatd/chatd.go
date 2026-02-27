@@ -1689,6 +1689,16 @@ func (p *Server) processChat(ctx context.Context, chat database.Chat) {
 		}
 
 		p.publishStatus(chat.ID, status, uuid.NullUUID{})
+		// Re-read the chat from the database to pick up any title
+		// changes made during processing (e.g. AI-generated titles
+		// from maybeGenerateChatTitle). The local `chat` variable
+		// is a value copy and won't reflect updates made in runChat.
+		if freshChat, readErr := p.db.GetChatByID(ctx, chat.ID); readErr == nil {
+			chat = freshChat
+		} else {
+			logger.Warn(ctx, "failed to re-read chat for status event",
+				slog.F("chat_id", chat.ID), slog.Error(readErr))
+		}
 		chat.Status = status
 		p.publishChatPubsubEvent(chat, coderdpubsub.ChatEventKindStatusChange)
 	}()
@@ -1729,7 +1739,10 @@ func (p *Server) runChat(
 	if err != nil {
 		return xerrors.Errorf("get chat messages: %w", err)
 	}
-	p.maybeGenerateChatTitle(ctx, chat, messages, model, logger)
+	// Fire title generation asynchronously so it doesn't block the
+	// chat response. It uses a detached context so it can finish
+	// even after the chat processing context is canceled.
+	go p.maybeGenerateChatTitle(context.WithoutCancel(ctx), chat, messages, model, logger)
 
 	prompt, err := chatprompt.ConvertMessages(messages)
 	if err != nil {
