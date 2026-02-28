@@ -3,10 +3,15 @@ import {
 	MockWorkspace,
 	MockWorkspaceAgent,
 } from "testHelpers/entities";
-import { withAuthProvider, withWebSocket } from "testHelpers/storybook";
+import {
+	withAuthProvider,
+	withDashboardProvider,
+	withWebSocket,
+} from "testHelpers/storybook";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { API } from "api/api";
 import {
+	chatDiffContentsKey,
 	chatDiffStatusKey,
 	chatKey,
 	chatModelsKey,
@@ -14,7 +19,7 @@ import {
 } from "api/queries/chats";
 import { workspaceByIdKey } from "api/queries/workspaces";
 import type * as TypesGen from "api/typesGenerated";
-import { type FC, useRef, useState } from "react";
+import type { FC } from "react";
 import { Outlet } from "react-router";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import {
@@ -25,45 +30,25 @@ import AgentDetail from "./AgentDetail";
 import type { AgentsOutletContext } from "./AgentsPage";
 
 // ---------------------------------------------------------------------------
-// Layout wrapper – provides portal targets for the top-bar and right panel
-// so the component can render its portaled actions menu and diff panel.
+// Layout wrapper – provides outlet context for the child route.
 // ---------------------------------------------------------------------------
 const AgentDetailLayout: FC = () => {
-	const topBarTitleRef = useRef<HTMLDivElement>(null);
-	const topBarActionsRef = useRef<HTMLDivElement>(null);
-	const rightPanelRef = useRef<HTMLDivElement>(null);
-	const [rightPanelOpen, setRightPanelOpen] = useState(false);
-
 	return (
 		<div className="flex h-full">
-			<div className="flex min-w-0 flex-1 flex-col">
-				<div className="flex items-center gap-2 border-b border-border px-4 py-2">
-					<div ref={topBarTitleRef} className="flex-1" />
-					<div ref={topBarActionsRef} />
-				</div>
-				<div className="flex-1 overflow-hidden">
-					<Outlet
-						context={
-							{
-								chatErrorReasons: {},
-								setChatErrorReason: () => {},
-								clearChatErrorReason: () => {},
-								topBarTitleRef,
-								topBarActionsRef,
-								rightPanelRef,
-								setRightPanelOpen,
-								requestArchiveAgent: () => {},
-							} satisfies AgentsOutletContext
-						}
-					/>
-				</div>
+			<div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+				<Outlet
+					context={
+						{
+							chatErrorReasons: {},
+							setChatErrorReason: () => {},
+							clearChatErrorReason: () => {},
+							requestArchiveAgent: () => {},
+							isSidebarCollapsed: false,
+							onToggleSidebarCollapsed: () => {},
+						} satisfies AgentsOutletContext
+					}
+				/>
 			</div>
-			<div
-				ref={rightPanelRef}
-				className={
-					rightPanelOpen ? "w-[400px] border-l border-border" : "hidden"
-				}
-			/>
 		</div>
 	);
 };
@@ -128,6 +113,21 @@ const baseChatFields = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** A small sample unified diff for stories that show the diff panel. */
+const sampleDiff = `diff --git a/main.go b/main.go
+index abc1234..def5678 100644
+--- a/main.go
++++ b/main.go
+@@ -10,6 +10,9 @@ func main() {
+ 	fmt.Println("hello")
++	fmt.Println("new feature")
++	fmt.Println("added line")
++	fmt.Println("another addition")
+ 	fmt.Println("world")
+-	fmt.Println("old line")
+ }
+`;
+
 /** Build `parameters.queries` entries for a given chat data object. */
 const buildQueries = (
 	chatData: TypesGen.ChatWithMessages,
@@ -145,6 +145,14 @@ const buildQueries = (
 			deletions: opts?.diffUrl ? 1 : 0,
 			changed_files: opts?.diffUrl ? 2 : 0,
 		} satisfies TypesGen.ChatDiffStatus,
+	},
+	{
+		key: chatDiffContentsKey(CHAT_ID),
+		data: {
+			chat_id: CHAT_ID,
+			diff: opts?.diffUrl ? sampleDiff : undefined,
+			pull_request_url: opts?.diffUrl,
+		} satisfies TypesGen.ChatDiffContents,
 	},
 	{
 		key: workspaceByIdKey(mockWorkspace.id),
@@ -167,7 +175,7 @@ const wrapSSE = (payload: unknown): string =>
 const meta: Meta<typeof AgentDetailLayout> = {
 	title: "pages/AgentsPage/AgentDetail",
 	component: AgentDetailLayout,
-	decorators: [withAuthProvider, withWebSocket],
+	decorators: [withAuthProvider, withDashboardProvider, withWebSocket],
 	parameters: {
 		layout: "fullscreen",
 		user: MockUserOwner,
