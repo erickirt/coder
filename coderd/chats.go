@@ -795,6 +795,7 @@ func (api *API) interruptChat(rw http.ResponseWriter, r *http.Request) {
 			WorkerID:    uuid.NullUUID{},
 			StartedAt:   sql.NullTime{},
 			HeartbeatAt: sql.NullTime{},
+			LastError:   sql.NullString{},
 		})
 		if updateErr != nil {
 			api.Logger.Error(ctx, "failed to mark chat as waiting",
@@ -2058,6 +2059,9 @@ func convertChat(c database.Chat, diffStatus *database.ChatDiffStatus) codersdk.
 		Status:            codersdk.ChatStatus(c.Status),
 		CreatedAt:         c.CreatedAt,
 		UpdatedAt:         c.UpdatedAt,
+	}
+	if c.LastError.Valid {
+		chat.LastError = &c.LastError.String
 	}
 	if c.ParentChatID.Valid {
 		parentChatID := c.ParentChatID.UUID
