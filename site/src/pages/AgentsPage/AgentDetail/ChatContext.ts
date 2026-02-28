@@ -185,7 +185,7 @@ const createInitialState = (): ChatStoreState => ({
 	subagentStatusOverrides: new Map(),
 });
 
-const createChatStore = (): ChatStore => {
+export const createChatStore = (): ChatStore => {
 	let state = createInitialState();
 	const listeners = new Set<() => void>();
 
