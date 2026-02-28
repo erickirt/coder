@@ -1,3 +1,4 @@
+import { MockWorkspace } from "testHelpers/entities";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { API } from "api/api";
 import { useRef } from "react";
@@ -75,6 +76,48 @@ export default meta;
 type Story = StoryObj<typeof AgentsEmptyStateWithPortal>;
 
 export const Default: Story = {};
+
+export const WithWorkspaces: Story = {
+	beforeEach: () => {
+		localStorage.clear();
+		spyOn(API, "getWorkspaces").mockResolvedValue({
+			workspaces: [
+				{
+					...MockWorkspace,
+					id: "ws-1",
+					name: "my-project",
+					owner_name: "johndoe",
+					owner_id: "user-1",
+				},
+				{
+					...MockWorkspace,
+					id: "ws-2",
+					name: "my-project",
+					owner_name: "janedoe",
+					owner_id: "user-2",
+				},
+				{
+					...MockWorkspace,
+					id: "ws-3",
+					name: "backend-api",
+					owner_name: "johndoe",
+					owner_id: "user-1",
+				},
+			],
+			count: 3,
+		});
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await waitFor(() => {
+			const trigger = canvas.getByText("Workspace").closest("button")!;
+			expect(trigger).toBeEnabled();
+		});
+		await userEvent.click(canvas.getByText("Workspace").closest("button")!);
+		// Wait for the portalled dropdown to appear so Chromatic captures it.
+		await within(canvasElement.ownerDocument.body).findByRole("listbox");
+	},
+};
 
 export const SavesBehaviorPromptAndRestores: Story = {
 	play: async ({ canvasElement }) => {
