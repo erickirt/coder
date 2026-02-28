@@ -1,5 +1,6 @@
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { parsePatchFiles } from "@pierre/diffs";
+import * as Diff from "diff";
 import type React from "react";
 import { asRecord, asString } from "../runtimeTypeUtils";
 
@@ -256,29 +257,10 @@ export const buildWriteFileDiff = (
 	path: string,
 	content: string,
 ): FileDiffMetadata | null => {
-	const lines = content.split("\n");
-	// Remove trailing empty line produced by a final newline.
-	if (lines.length > 0 && lines[lines.length - 1] === "") {
-		lines.pop();
-	}
-	if (lines.length === 0) {
-		return null;
-	}
-
-	const patchLines = [
-		`diff --git a/${path} b/${path}`,
-		"new file mode 100644",
-		"--- /dev/null",
-		`+++ b/${path}`,
-		`@@ -0,0 +1,${lines.length} @@`,
-		...lines.map((l) => `+${l}`),
-	];
-	const patch = `${patchLines.join("\n")}\n`;
-
+	if (!content) return null;
+	const patch = Diff.createPatch(path, "", content, "", "");
 	const parsed = parsePatchFiles(patch);
-	if (!parsed.length || !parsed[0].files.length) {
-		return null;
-	}
+	if (!parsed.length || !parsed[0].files.length) return null;
 	return parsed[0].files[0];
 };
 
@@ -331,9 +313,9 @@ export const parseEditFilesArgs = (args: unknown): EditFilesFileEntry[] => {
 
 /**
  * Builds a synthetic unified diff from search/replace edit pairs
- * for a single file. Each pair becomes a separate hunk in the
- * diff. Line numbers are synthetic since we don't have the full
- * file content.
+ * for a single file. Each edit becomes a separate
+ * `Diff.createPatch` call; the patches are concatenated and
+ * parsed into a single FileDiffMetadata.
  */
 export const buildEditDiff = (
 	path: string,
@@ -345,41 +327,21 @@ export const buildEditDiff = (
 	// produce a double-slash that confuses the diff parser.
 	const diffPath = path.startsWith("/") ? path.slice(1) : path;
 
-	const patchLines: string[] = [
-		`diff --git a/${diffPath} b/${diffPath}`,
-		`--- a/${diffPath}`,
-		`+++ b/${diffPath}`,
-	];
-
-	let lineOffset = 1;
+	const patches: string[] = [];
 	for (const edit of edits) {
 		if (!edit.search) continue;
-		const searchLines = edit.search.split("\n");
-		const replaceLines = edit.replace.split("\n");
-
-		// Remove trailing empty line produced by a final newline.
-		if (searchLines.length > 0 && searchLines[searchLines.length - 1] === "") {
-			searchLines.pop();
-		}
-		if (
-			replaceLines.length > 0 &&
-			replaceLines[replaceLines.length - 1] === ""
-		) {
-			replaceLines.pop();
-		}
-		if (searchLines.length === 0 && replaceLines.length === 0) continue;
-
-		patchLines.push(
-			`@@ -${lineOffset},${searchLines.length} +${lineOffset},${replaceLines.length} @@`,
+		patches.push(Diff.createPatch(diffPath, edit.search, edit.replace, "", ""));
+	}
+	if (!patches.length) {
+		// All edits were skipped (empty search). Produce a
+		// header-only patch so the parser still returns a file
+		// entry with zero hunks.
+		patches.push(
+			`Index: ${diffPath}\n===================================================================\n--- ${diffPath}\n+++ ${diffPath}\n`,
 		);
-		for (const l of searchLines) patchLines.push(`-${l}`);
-		for (const l of replaceLines) patchLines.push(`+${l}`);
-
-		lineOffset += Math.max(searchLines.length, replaceLines.length) + 1;
 	}
 
-	const patch = `${patchLines.join("\n")}\n`;
-	const parsed = parsePatchFiles(patch);
+	const parsed = parsePatchFiles(patches.join(""));
 	if (!parsed.length || !parsed[0].files.length) return null;
 	return parsed[0].files[0];
 };

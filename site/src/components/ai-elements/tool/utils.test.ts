@@ -553,6 +553,21 @@ describe("buildEditDiff", () => {
 		]);
 		expect(diff).not.toBeNull();
 	});
+
+	it("preserves unchanged lines as context in hunks", () => {
+		const diff = buildEditDiff("file.ts", [
+			{
+				search: "const x = 1;\nconst y = 2;\nconst z = 3;",
+				replace: "const x = 10;\nconst y = 2;\nconst z = 30;",
+			},
+		]);
+		expect(diff).not.toBeNull();
+		const hunk = diff!.hunks[0];
+		// The hunk should contain context blocks for the unchanged
+		// middle line rather than removing and re-adding everything.
+		const hasContext = hunk.hunkContent.some((c) => c.type === "context");
+		expect(hasContext).toBe(true);
+	});
 });
 
 describe("constants", () => {
