@@ -16,7 +16,9 @@ const meta: Meta<typeof AgentChatInput> = {
 	component: AgentChatInput,
 	args: {
 		onSend: fn(),
+		onChange: fn(),
 		onModelChange: fn(),
+		value: "",
 		isDisabled: false,
 		isLoading: false,
 		selectedModel: defaultModelOptions[0].id,
@@ -36,37 +38,32 @@ export const Default: Story = {};
 export const DisablesSendUntilInput: Story = {
 	play: async ({ canvasElement }) => {
 		const canvas = within(canvasElement);
-		const input = canvas.getByPlaceholderText("Type a message...");
 		const sendButton = canvas.getByRole("button", { name: "Send" });
 
 		expect(sendButton).toBeDisabled();
-		await userEvent.type(input, "Write tests");
-		expect(sendButton).toBeEnabled();
 	},
 };
 
 export const SendsAndClearsInput: Story = {
 	args: {
-		onSend: fn().mockResolvedValue(undefined),
+		onSend: fn(),
+		value: "Run focused tests",
 	},
 	play: async ({ canvasElement, args }) => {
 		const canvas = within(canvasElement);
-		const input = canvas.getByPlaceholderText("Type a message...");
 
-		await userEvent.type(input, "Run focused tests");
 		await userEvent.click(canvas.getByRole("button", { name: "Send" }));
 
 		await waitFor(() => {
-			expect(args.onSend).toHaveBeenCalledWith("Run focused tests", undefined);
+			expect(args.onSend).toHaveBeenCalledWith("Run focused tests");
 		});
-		expect(input).toHaveValue("");
 	},
 };
 
 export const DisabledInput: Story = {
 	args: {
 		isDisabled: true,
-		initialValue: "Should not send",
+		value: "Should not send",
 	},
 	play: async ({ canvasElement }) => {
 		const canvas = within(canvasElement);
@@ -78,7 +75,7 @@ export const NoModelOptions: Story = {
 	args: {
 		isDisabled: false,
 		hasModelOptions: false,
-		initialValue: "Model required",
+		value: "Model required",
 	},
 	play: async ({ canvasElement }) => {
 		const canvas = within(canvasElement);
@@ -90,7 +87,7 @@ export const LoadingSpinner: Story = {
 	args: {
 		isDisabled: true,
 		isLoading: true,
-		initialValue: "Sending...",
+		value: "Sending...",
 	},
 	play: async ({ canvasElement }) => {
 		const canvas = within(canvasElement);
@@ -99,5 +96,20 @@ export const LoadingSpinner: Story = {
 		// The Loader2Icon renders with the animate-spin class when
 		// isLoading is true.
 		expect(sendButton.querySelector(".animate-spin")).toBeTruthy();
+	},
+};
+
+export const LoadingDisablesSend: Story = {
+	args: {
+		isDisabled: false,
+		isLoading: true,
+		value: "Another message",
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		const sendButton = canvas.getByRole("button", { name: "Send" });
+		// The send button should be disabled while a previous send is
+		// in-flight, even though the textarea has content.
+		expect(sendButton).toBeDisabled();
 	},
 };
