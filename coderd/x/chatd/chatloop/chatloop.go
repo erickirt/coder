@@ -38,12 +38,22 @@ const (
 )
 
 var (
-	ErrInterrupted = xerrors.New("chat interrupted")
+	ErrInterrupted     = xerrors.New("chat interrupted")
+	ErrDynamicToolCall = xerrors.New("dynamic tool call")
 
 	errStartupTimeout = xerrors.New(
 		"chat response did not start before the startup timeout",
 	)
 )
+
+// PendingToolCall describes a tool call that targets a dynamic
+// tool. These calls are not executed by the chatloop; instead
+// they are persisted so the caller can fulfill them externally.
+type PendingToolCall struct {
+	ToolCallID string
+	ToolName   string
+	Args       string
+}
 
 // PersistedStep contains the full content of a completed or
 // interrupted agent step. Content includes both assistant blocks
@@ -60,6 +70,11 @@ type PersistedStep struct {
 	// Zero indicates the duration was not measured (e.g.
 	// interrupted steps).
 	Runtime time.Duration
+	// PendingDynamicToolCalls lists tool calls that target
+	// dynamic tools. When non-empty the chatloop exits with
+	// ErrDynamicToolCall so the caller can execute them
+	// externally and resume the loop.
+	PendingDynamicToolCalls []PendingToolCall
 }
 
 // RunOptions configures a single streaming chat loop run.
@@ -76,6 +91,12 @@ type RunOptions struct {
 
 	ActiveTools          []string
 	ContextLimitFallback int64
+
+	// DynamicToolNames lists tool names that are handled
+	// externally. When the model invokes one of these tools
+	// the chatloop persists partial results and exits with
+	// ErrDynamicToolCall instead of executing the tool.
+	DynamicToolNames map[string]bool
 
 	// ModelConfig holds per-call LLM parameters (temperature,
 	// max tokens, etc.) read from the chat model configuration.
@@ -385,7 +406,22 @@ func Run(ctx context.Context, opts RunOptions) error {
 					return ctx.Err()
 				}
 
-				toolResults = executeTools(ctx, opts.Tools, opts.ProviderTools, result.toolCalls, func(tr fantasy.ToolResultContent) {
+				// Partition tool calls into built-in and dynamic.
+				var builtinCalls, dynamicCalls []fantasy.ToolCallContent
+				if len(opts.DynamicToolNames) > 0 {
+					for _, tc := range result.toolCalls {
+						if opts.DynamicToolNames[tc.ToolName] {
+							dynamicCalls = append(dynamicCalls, tc)
+						} else {
+							builtinCalls = append(builtinCalls, tc)
+						}
+					}
+				} else {
+					builtinCalls = result.toolCalls
+				}
+
+				// Execute only built-in tools.
+				toolResults = executeTools(ctx, opts.Tools, opts.ProviderTools, builtinCalls, func(tr fantasy.ToolResultContent) {
 					publishMessagePart(
 						codersdk.ChatMessageRoleTool,
 						chatprompt.PartFromContent(tr),
@@ -393,6 +429,47 @@ func Run(ctx context.Context, opts RunOptions) error {
 				})
 				for _, tr := range toolResults {
 					result.content = append(result.content, tr)
+				}
+
+				// If dynamic tools were called, persist what we
+				// have (assistant + built-in results) and exit so
+				// the caller can execute them externally.
+				if len(dynamicCalls) > 0 {
+					pending := make([]PendingToolCall, 0, len(dynamicCalls))
+					for _, dc := range dynamicCalls {
+						pending = append(pending, PendingToolCall{
+							ToolCallID: dc.ToolCallID,
+							ToolName:   dc.ToolName,
+							Args:       dc.Input,
+						})
+					}
+
+					contextLimit := extractContextLimit(result.providerMetadata)
+					if !contextLimit.Valid && opts.ContextLimitFallback > 0 {
+						contextLimit = sql.NullInt64{
+							Int64: opts.ContextLimitFallback,
+							Valid: true,
+						}
+					}
+
+					if err := opts.PersistStep(ctx, PersistedStep{
+						Content:                 result.content,
+						Usage:                   result.usage,
+						ContextLimit:            contextLimit,
+						ProviderResponseID:      extractOpenAIResponseIDIfStored(opts.ProviderOptions, result.providerMetadata),
+						Runtime:                 time.Since(stepStart),
+						PendingDynamicToolCalls: pending,
+					}); err != nil {
+						if errors.Is(err, ErrInterrupted) {
+							persistInterruptedStep(ctx, opts, &result)
+							return ErrInterrupted
+						}
+						return xerrors.Errorf("persist step: %w", err)
+					}
+
+					tryCompactOnExit(ctx, opts, result.usage, result.providerMetadata)
+
+					return ErrDynamicToolCall
 				}
 
 				// Check for interruption after tool execution.
@@ -1085,6 +1162,38 @@ func persistInterruptedStep(
 		if opts.OnInterruptedPersistError != nil {
 			opts.OnInterruptedPersistError(err)
 		}
+	}
+}
+
+// tryCompactOnExit runs compaction when the chatloop is about
+// to exit early (e.g. via ErrDynamicToolCall). The normal
+// inline and post-run compaction paths are unreachable in
+// early-exit scenarios, so this ensures the context window
+// doesn't grow unbounded.
+func tryCompactOnExit(
+	ctx context.Context,
+	opts RunOptions,
+	usage fantasy.Usage,
+	metadata fantasy.ProviderMetadata,
+) {
+	if opts.Compaction == nil || opts.ReloadMessages == nil {
+		return
+	}
+	reloaded, err := opts.ReloadMessages(ctx)
+	if err != nil {
+		return
+	}
+	_, compactErr := tryCompact(
+		ctx,
+		opts.Model,
+		opts.Compaction,
+		opts.ContextLimitFallback,
+		usage,
+		metadata,
+		reloaded,
+	)
+	if compactErr != nil && opts.Compaction.OnError != nil {
+		opts.Compaction.OnError(compactErr)
 	}
 }
 

@@ -399,7 +399,8 @@ INSERT INTO chats (
     mode,
     status,
     mcp_server_ids,
-    labels
+    labels,
+    dynamic_tools
 ) VALUES (
     @owner_id::uuid,
     sqlc.narg('workspace_id')::uuid,
@@ -412,7 +413,8 @@ INSERT INTO chats (
     sqlc.narg('mode')::chat_mode,
     @status::chat_status,
     COALESCE(@mcp_server_ids::uuid[], '{}'::uuid[]),
-    COALESCE(sqlc.narg('labels')::jsonb, '{}'::jsonb)
+    COALESCE(sqlc.narg('labels')::jsonb, '{}'::jsonb),
+    sqlc.narg('dynamic_tools')::jsonb
 )
 RETURNING
     *;
@@ -669,15 +671,19 @@ RETURNING
     *;
 
 -- name: GetStaleChats :many
--- Find chats that appear stuck (running but heartbeat has expired).
--- Used for recovery after coderd crashes or long hangs.
+-- Find chats that appear stuck and need recovery. This covers:
+--   1. Running chats whose heartbeat has expired (worker crash).
+--   2. Chats awaiting client action (requires_action) past the
+--      timeout threshold (client disappeared).
 SELECT
     *
 FROM
     chats
 WHERE
-    status = 'running'::chat_status
-    AND heartbeat_at < @stale_threshold::timestamptz;
+    (status = 'running'::chat_status
+        AND heartbeat_at < @stale_threshold::timestamptz)
+    OR (status = 'requires_action'::chat_status
+        AND updated_at < @stale_threshold::timestamptz);
 
 -- name: UpdateChatHeartbeats :many
 -- Bumps the heartbeat timestamp for the given set of chat IDs,
