@@ -17514,7 +17514,8 @@ SELECT
 	w.id AS workspace_id,
 	COALESCE(w.name, '') AS workspace_name,
 	-- Include the name of the provisioner_daemon associated to the job
-	COALESCE(pd.name, '') AS worker_name
+	COALESCE(pd.name, '') AS worker_name,
+	wb.transition as workspace_build_transition
 FROM
 	provisioner_jobs pj
 LEFT JOIN
@@ -17559,7 +17560,8 @@ GROUP BY
 	t.icon,
 	w.id,
 	w.name,
-	pd.name
+	pd.name,
+	wb.transition
 ORDER BY
 	pj.created_at DESC
 LIMIT
@@ -17576,18 +17578,19 @@ type GetProvisionerJobsByOrganizationAndStatusWithQueuePositionAndProvisionerPar
 }
 
 type GetProvisionerJobsByOrganizationAndStatusWithQueuePositionAndProvisionerRow struct {
-	ProvisionerJob      ProvisionerJob `db:"provisioner_job" json:"provisioner_job"`
-	QueuePosition       int64          `db:"queue_position" json:"queue_position"`
-	QueueSize           int64          `db:"queue_size" json:"queue_size"`
-	AvailableWorkers    []uuid.UUID    `db:"available_workers" json:"available_workers"`
-	TemplateVersionName string         `db:"template_version_name" json:"template_version_name"`
-	TemplateID          uuid.NullUUID  `db:"template_id" json:"template_id"`
-	TemplateName        string         `db:"template_name" json:"template_name"`
-	TemplateDisplayName string         `db:"template_display_name" json:"template_display_name"`
-	TemplateIcon        string         `db:"template_icon" json:"template_icon"`
-	WorkspaceID         uuid.NullUUID  `db:"workspace_id" json:"workspace_id"`
-	WorkspaceName       string         `db:"workspace_name" json:"workspace_name"`
-	WorkerName          string         `db:"worker_name" json:"worker_name"`
+	ProvisionerJob           ProvisionerJob          `db:"provisioner_job" json:"provisioner_job"`
+	QueuePosition            int64                   `db:"queue_position" json:"queue_position"`
+	QueueSize                int64                   `db:"queue_size" json:"queue_size"`
+	AvailableWorkers         []uuid.UUID             `db:"available_workers" json:"available_workers"`
+	TemplateVersionName      string                  `db:"template_version_name" json:"template_version_name"`
+	TemplateID               uuid.NullUUID           `db:"template_id" json:"template_id"`
+	TemplateName             string                  `db:"template_name" json:"template_name"`
+	TemplateDisplayName      string                  `db:"template_display_name" json:"template_display_name"`
+	TemplateIcon             string                  `db:"template_icon" json:"template_icon"`
+	WorkspaceID              uuid.NullUUID           `db:"workspace_id" json:"workspace_id"`
+	WorkspaceName            string                  `db:"workspace_name" json:"workspace_name"`
+	WorkerName               string                  `db:"worker_name" json:"worker_name"`
+	WorkspaceBuildTransition NullWorkspaceTransition `db:"workspace_build_transition" json:"workspace_build_transition"`
 }
 
 func (q *sqlQuerier) GetProvisionerJobsByOrganizationAndStatusWithQueuePositionAndProvisioner(ctx context.Context, arg GetProvisionerJobsByOrganizationAndStatusWithQueuePositionAndProvisionerParams) ([]GetProvisionerJobsByOrganizationAndStatusWithQueuePositionAndProvisionerRow, error) {
@@ -17639,6 +17642,7 @@ func (q *sqlQuerier) GetProvisionerJobsByOrganizationAndStatusWithQueuePositionA
 			&i.WorkspaceID,
 			&i.WorkspaceName,
 			&i.WorkerName,
+			&i.WorkspaceBuildTransition,
 		); err != nil {
 			return nil, err
 		}
