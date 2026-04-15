@@ -5059,21 +5059,16 @@ func (p *Server) runChat(
 			p.publishChatPubsubEvent(updatedChat, codersdk.ChatWatchEventKindStatusChange, nil)
 		}
 		tools = append(tools,
-			chattool.ListTemplates(chattool.ListTemplatesOptions{
-				DB:                 p.db,
-				OwnerID:            chat.OwnerID,
-				OrganizationID:     chat.OrganizationID,
-				AllowedTemplateIDs: p.chatTemplateAllowlist,
-			}),
-			chattool.ReadTemplate(chattool.ReadTemplateOptions{
-				DB:                 p.db,
+			chattool.ListTemplates(chat.OrganizationID, p.db, chattool.ListTemplatesOptions{
 				OwnerID:            chat.OwnerID,
 				AllowedTemplateIDs: p.chatTemplateAllowlist,
 			}),
-			chattool.CreateWorkspace(chattool.CreateWorkspaceOptions{
-				DB:                             p.db,
+			chattool.ReadTemplate(chat.OrganizationID, p.db, chattool.ReadTemplateOptions{
+				OwnerID:            chat.OwnerID,
+				AllowedTemplateIDs: p.chatTemplateAllowlist,
+			}),
+			chattool.CreateWorkspace(chat.OrganizationID, p.db, chattool.CreateWorkspaceOptions{
 				OwnerID:                        chat.OwnerID,
-				OrganizationID:                 chat.OrganizationID,
 				ChatID:                         chat.ID,
 				CreateFn:                       p.createWorkspaceFn,
 				AgentConnFn:                    chattool.AgentConnFunc(p.agentConnFn),
@@ -5083,6 +5078,7 @@ func (p *Server) runChat(
 				Logger:                         p.logger,
 				AllowedTemplateIDs:             p.chatTemplateAllowlist,
 			}),
+
 			chattool.StartWorkspace(chattool.StartWorkspaceOptions{
 				DB:            p.db,
 				OwnerID:       chat.OwnerID,

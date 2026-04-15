@@ -9,6 +9,13 @@ import {
 import { withDashboardProvider } from "#/testHelpers/storybook";
 import { AgentCreateForm } from "./AgentCreateForm";
 
+// Query key used by permittedOrganizations() in the form.
+const permittedOrgsKey = [
+	"organizations",
+	"permitted",
+	{ object: { resource_type: "chat" }, action: "create" },
+];
+
 const modelConfigID = "model-config-1";
 
 const modelOptions = [
@@ -231,6 +238,7 @@ export const PreservesAttachmentsOnFailedSend: Story = {
 					fileName: "photo.png",
 					fileType: "image/png",
 					lastModified: 1000,
+					organizationId: "my-organization-id",
 				},
 			]),
 		);
@@ -319,6 +327,29 @@ export const WithOrganizationPicker: Story = {
 	parameters: {
 		showOrganizations: true,
 		organizations: [MockDefaultOrganization, MockOrganization2],
+		queries: [
+			{
+				key: permittedOrgsKey,
+				data: [MockDefaultOrganization, MockOrganization2],
+			},
+		],
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		// Verify the org picker rendered (component didn't crash).
+		await waitFor(() => {
+			expect(
+				canvas.getByTestId("organization-autocomplete"),
+			).toBeInTheDocument();
+		});
+		// Type into the chat input to trigger re-renders. If the
+		// permittedOrgs fallback is referentially unstable, this
+		// causes a render cascade that hits React's update limit.
+		const input = canvas.getByTestId("chat-message-input");
+		await userEvent.click(input);
+		await userEvent.keyboard("hello world");
+		// The org picker should still be present after typing.
+		expect(canvas.getByTestId("organization-autocomplete")).toBeInTheDocument();
 	},
 };
 
