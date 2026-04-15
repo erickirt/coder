@@ -18,6 +18,7 @@ import (
 	"charm.land/fantasy"
 	"charm.land/fantasy/providers/anthropic"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/shopspring/decimal"
 	"github.com/sqlc-dev/pqtype"
 	"golang.org/x/sync/errgroup"
@@ -145,6 +146,7 @@ type Server struct {
 
 	usageTracker *workspacestats.UsageTracker
 	clock        quartz.Clock
+	metrics      *chatloop.Metrics
 	recordingSem chan struct{}
 
 	// Configuration
@@ -2700,6 +2702,7 @@ type Config struct {
 	WebpushDispatcher              webpush.Dispatcher
 	UsageTracker                   *workspacestats.UsageTracker
 	Clock                          quartz.Clock
+	PrometheusRegistry             prometheus.Registerer
 }
 
 // New creates a new chat processor. The processor polls for pending
@@ -2767,6 +2770,11 @@ func New(cfg Config) *Server {
 		recordingSem:                   make(chan struct{}, maxConcurrentRecordingUploads),
 		wakeCh:                         make(chan struct{}, 1),
 		heartbeatRegistry:              make(map[uuid.UUID]*heartbeatEntry),
+	}
+	if cfg.PrometheusRegistry != nil {
+		p.metrics = chatloop.NewMetrics(cfg.PrometheusRegistry)
+	} else {
+		p.metrics = chatloop.NopMetrics()
 	}
 	//nolint:gocritic // The chat processor uses a scoped chatd context.
 	ctx = dbauthz.AsChatd(ctx)
@@ -4027,7 +4035,7 @@ func (p *Server) trackWorkspaceUsage(
 		// approx. 333 CTE queries/second. A cheap fix for this could
 		// be to heartbeat every Nth query. Leaving as potential future
 		// low-hanging fruit if needed.
-		workspacestats.ActivityBumpWorkspace(ctx, logger.Named("activity_bump"), p.db, wsID.UUID, time.Time{})
+		workspacestats.ActivityBumpWorkspace(ctx, logger.Named("activity_bump"), p.db, wsID.UUID, time.Time{}, workspacestats.ActivityBumpReasonChatHeartbeat)
 	}
 	return wsID
 }
@@ -4035,6 +4043,9 @@ func (p *Server) trackWorkspaceUsage(
 func (p *Server) processChat(ctx context.Context, chat database.Chat) {
 	logger := p.logger.With(slog.F("chat_id", chat.ID))
 	logger.Info(ctx, "processing chat request")
+
+	p.metrics.Chats.WithLabelValues(chatloop.StateWaiting).Inc()
+	defer p.metrics.Chats.WithLabelValues(chatloop.StateWaiting).Dec()
 
 	chatCtx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
@@ -4246,6 +4257,12 @@ func (p *Server) processChat(ctx context.Context, chat database.Chat) {
 		}
 	}()
 
+	p.metrics.Chats.WithLabelValues(chatloop.StateWaiting).Dec()
+	p.metrics.Chats.WithLabelValues(chatloop.StateStreaming).Inc()
+	defer func() {
+		p.metrics.Chats.WithLabelValues(chatloop.StateStreaming).Dec()
+		p.metrics.Chats.WithLabelValues(chatloop.StateWaiting).Inc()
+	}()
 	runResult, err := p.runChat(chatCtx, chat, generatedTitle, logger)
 	if err != nil {
 		if errors.Is(err, chatloop.ErrInterrupted) || errors.Is(context.Cause(chatCtx), chatloop.ErrInterrupted) {
@@ -5165,12 +5182,18 @@ func (p *Server) runChat(
 		)
 	}
 
+	// Record builtin tool names before appending MCP tools
+	// so the metrics layer can bound label cardinality.
+	builtinToolNames := make(map[string]bool, len(tools))
+	for _, t := range tools {
+		builtinToolNames[t.Info().Name] = true
+	}
+
 	// Append tools from external MCP servers. These appear
 	// after the built-in tools so the LLM sees them as
 	// additional capabilities.
 	tools = append(tools, mcpTools...)
 	tools = append(tools, workspaceMCPTools...)
-
 	// Append dynamic tools declared by the client at chat
 	// creation time. These appear in the LLM's tool list but
 	// are never executed by the chatloop — the client handles
@@ -5251,6 +5274,8 @@ func (p *Server) runChat(
 		Model:    model,
 		Messages: prompt,
 		Tools:    tools, MaxSteps: maxChatSteps,
+		Metrics:          p.metrics,
+		BuiltinToolNames: builtinToolNames,
 
 		ModelConfig:     callConfig,
 		ProviderOptions: providerOptions,
