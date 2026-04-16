@@ -4422,22 +4422,6 @@ func (q *querier) GetWorkspaceAgentByID(ctx context.Context, id uuid.UUID) (data
 	return q.db.GetWorkspaceAgentByID(ctx, id)
 }
 
-// GetWorkspaceAgentByInstanceID might want to be a system call? Unsure exactly,
-// but this will fail. Need to figure out what AuthInstanceID is, and if it
-// is essentially an auth token. But the caller using this function is not
-// an authenticated user. So this authz check will fail.
-func (q *querier) GetWorkspaceAgentByInstanceID(ctx context.Context, authInstanceID string) (database.WorkspaceAgent, error) {
-	agent, err := q.db.GetWorkspaceAgentByInstanceID(ctx, authInstanceID)
-	if err != nil {
-		return database.WorkspaceAgent{}, err
-	}
-	_, err = q.GetWorkspaceByAgentID(ctx, agent.ID)
-	if err != nil {
-		return database.WorkspaceAgent{}, err
-	}
-	return agent, nil
-}
-
 func (q *querier) GetWorkspaceAgentDevcontainersByAgentID(ctx context.Context, workspaceAgentID uuid.UUID) ([]database.WorkspaceAgentDevcontainer, error) {
 	_, err := q.GetWorkspaceAgentByID(ctx, workspaceAgentID)
 	if err != nil {
@@ -4525,6 +4509,33 @@ func (q *querier) GetWorkspaceAgentUsageStats(ctx context.Context, createdAt tim
 
 func (q *querier) GetWorkspaceAgentUsageStatsAndLabels(ctx context.Context, createdAt time.Time) ([]database.GetWorkspaceAgentUsageStatsAndLabelsRow, error) {
 	return q.db.GetWorkspaceAgentUsageStatsAndLabels(ctx, createdAt)
+}
+
+func (q *querier) GetWorkspaceAgentsByInstanceID(ctx context.Context, authInstanceID string) ([]database.WorkspaceAgent, error) {
+	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceSystem); err == nil {
+		return q.db.GetWorkspaceAgentsByInstanceID(ctx, authInstanceID)
+	}
+
+	agents, err := q.db.GetWorkspaceAgentsByInstanceID(ctx, authInstanceID)
+	if err != nil {
+		return nil, err
+	}
+	// Filter to agents whose workspace is accessible. Template-version
+	// agents can share the same instance ID but do not belong to a
+	// workspace, so GetWorkspaceByAgentID returns sql.ErrNoRows for
+	// them. Exclude those agents rather than failing the entire lookup.
+	filtered := make([]database.WorkspaceAgent, 0, len(agents))
+	for _, agent := range agents {
+		_, err = q.GetWorkspaceByAgentID(ctx, agent.ID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return nil, err
+		}
+		filtered = append(filtered, agent)
+	}
+	return filtered, nil
 }
 
 func (q *querier) GetWorkspaceAgentsByParentID(ctx context.Context, parentID uuid.UUID) ([]database.WorkspaceAgent, error) {
