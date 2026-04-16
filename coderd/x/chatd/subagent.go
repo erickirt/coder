@@ -411,8 +411,9 @@ func parseSubagentToolChatID(raw string) (uuid.UUID, error) {
 }
 
 type childSubagentChatOptions struct {
-	chatMode     database.NullChatMode
-	systemPrompt string
+	chatMode              database.NullChatMode
+	systemPrompt          string
+	modelConfigIDOverride *uuid.UUID
 }
 
 func (p *Server) createChildSubagentChat(
@@ -449,8 +450,13 @@ func (p *Server) createChildSubagentChatWithOptions(
 	if parent.RootChatID.Valid {
 		rootChatID = parent.RootChatID.UUID
 	}
-	if parent.LastModelConfigID == uuid.Nil {
-		return database.Chat{}, xerrors.New("parent chat model config id is required")
+
+	modelConfigID := parent.LastModelConfigID
+	if opts.modelConfigIDOverride != nil {
+		modelConfigID = *opts.modelConfigIDOverride
+	}
+	if modelConfigID == uuid.Nil {
+		return database.Chat{}, xerrors.New("model config is required")
 	}
 
 	mcpServerIDs := parent.MCPServerIDs
@@ -482,7 +488,7 @@ func (p *Server) createChildSubagentChatWithOptions(
 			AgentID:           parent.AgentID,
 			ParentChatID:      uuid.NullUUID{UUID: parent.ID, Valid: true},
 			RootChatID:        uuid.NullUUID{UUID: rootChatID, Valid: true},
-			LastModelConfigID: parent.LastModelConfigID,
+			LastModelConfigID: modelConfigID,
 			Title:             title,
 			Mode:              opts.chatMode,
 			PlanMode:          parent.PlanMode,
@@ -528,7 +534,7 @@ func (p *Server) createChildSubagentChatWithOptions(
 				database.ChatMessageRoleSystem,
 				deploymentContent,
 				database.ChatMessageVisibilityModel,
-				parent.LastModelConfigID,
+				modelConfigID,
 				chatprompt.CurrentContentVersion,
 			))
 		}
@@ -543,7 +549,7 @@ func (p *Server) createChildSubagentChatWithOptions(
 				database.ChatMessageRoleSystem,
 				childSystemPromptContent,
 				database.ChatMessageVisibilityModel,
-				parent.LastModelConfigID,
+				modelConfigID,
 				chatprompt.CurrentContentVersion,
 			))
 		}
@@ -551,7 +557,7 @@ func (p *Server) createChildSubagentChatWithOptions(
 			database.ChatMessageRoleSystem,
 			workspaceAwarenessContent,
 			database.ChatMessageVisibilityModel,
-			parent.LastModelConfigID,
+			modelConfigID,
 			chatprompt.CurrentContentVersion,
 		))
 		if _, err := tx.InsertChatMessages(ctx, systemParams); err != nil {
@@ -578,7 +584,7 @@ func (p *Server) createChildSubagentChatWithOptions(
 			database.ChatMessageRoleUser,
 			userContent,
 			database.ChatMessageVisibilityBoth,
-			parent.LastModelConfigID,
+			modelConfigID,
 			chatprompt.CurrentContentVersion,
 		).withCreatedBy(parent.OwnerID))
 		if _, err := tx.InsertChatMessages(ctx, userParams); err != nil {
