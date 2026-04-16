@@ -379,6 +379,16 @@ func (api *API) getChatDiffStatusesByChatID(
 	return statusesByChatID, nil
 }
 
+func planModeToNullChatPlanMode(mode codersdk.ChatPlanMode) database.NullChatPlanMode {
+	if mode == "" {
+		return database.NullChatPlanMode{}
+	}
+	return database.NullChatPlanMode{
+		ChatPlanMode: database.ChatPlanMode(mode),
+		Valid:        true,
+	}
+}
+
 // EXPERIMENTAL: this endpoint is experimental and is subject to change.
 func (api *API) postChats(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -454,6 +464,16 @@ func (api *API) postChats(rw http.ResponseWriter, r *http.Request) {
 	modelConfigID, modelConfigStatus, modelConfigError := api.resolveCreateChatModelConfigID(ctx, req)
 	if modelConfigError != nil {
 		httpapi.Write(ctx, rw, modelConfigStatus, *modelConfigError)
+		return
+	}
+
+	switch req.PlanMode {
+	case codersdk.ChatPlanModePlan, "":
+		// Valid.
+	default:
+		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+			Message: "Invalid plan_mode value.",
+		})
 		return
 	}
 
@@ -554,6 +574,7 @@ func (api *API) postChats(rw http.ResponseWriter, r *http.Request) {
 		WorkspaceID:        workspaceSelection.WorkspaceID,
 		Title:              title,
 		ModelConfigID:      modelConfigID,
+		PlanMode:           planModeToNullChatPlanMode(req.PlanMode),
 		SystemPrompt:       req.SystemPrompt,
 		InitialUserContent: contentBlocks,
 		MCPServerIDs:       mcpServerIDs,
@@ -1728,7 +1749,7 @@ func (api *API) watchChatDesktop(rw http.ResponseWriter, r *http.Request) {
 }
 
 // patchChat updates a chat resource. Supports updating labels,
-// archiving, pinning, and pinned-chat ordering.
+// workspace binding, archiving, pinning, and pinned-chat ordering.
 func (api *API) patchChat(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	chat := httpmw.ChatParam(r)
@@ -1736,6 +1757,21 @@ func (api *API) patchChat(rw http.ResponseWriter, r *http.Request) {
 	var req codersdk.UpdateChatRequest
 	if !httpapi.Read(ctx, rw, r, &req) {
 		return
+	}
+
+	var planModeUpdate *database.NullChatPlanMode
+	if req.PlanMode != nil {
+		switch *req.PlanMode {
+		case codersdk.ChatPlanModePlan, "":
+			// Valid.
+		default:
+			httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+				Message: "Invalid plan_mode value.",
+			})
+			return
+		}
+		resolvedPlanMode := planModeToNullChatPlanMode(*req.PlanMode)
+		planModeUpdate = &resolvedPlanMode
 	}
 
 	if req.Labels != nil {
@@ -1863,6 +1899,64 @@ func (api *API) patchChat(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if req.WorkspaceID != nil {
+		workspaceID := uuid.NullUUID{}
+		workspace := database.Workspace{}
+		if *req.WorkspaceID != uuid.Nil {
+			var status int
+			var resp *codersdk.Response
+			workspaceID, workspace, status, resp = api.validateChatWorkspaceSelection(ctx, r, req.WorkspaceID)
+			if resp != nil {
+				httpapi.Write(ctx, rw, status, *resp)
+				return
+			}
+			if workspace.OrganizationID != chat.OrganizationID {
+				httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+					Message: "Workspace does not belong to this chat's organization.",
+				})
+				return
+			}
+		}
+
+		updatedChat, err := api.Database.UpdateChatWorkspaceBinding(ctx, database.UpdateChatWorkspaceBindingParams{
+			ID:          chat.ID,
+			WorkspaceID: workspaceID,
+			BuildID:     uuid.NullUUID{},
+			AgentID:     uuid.NullUUID{},
+		})
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				httpapi.ResourceNotFound(rw)
+				return
+			}
+			httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
+				Message: "Failed to update chat workspace binding.",
+				Detail:  err.Error(),
+			})
+			return
+		}
+		chat = updatedChat
+	}
+
+	if planModeUpdate != nil {
+		updatedChat, err := api.Database.UpdateChatPlanModeByID(ctx, database.UpdateChatPlanModeByIDParams{
+			PlanMode: *planModeUpdate,
+			ID:       chat.ID,
+		})
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				httpapi.ResourceNotFound(rw)
+				return
+			}
+			httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
+				Message: "Failed to update chat plan mode.",
+				Detail:  err.Error(),
+			})
+			return
+		}
+		chat = updatedChat
+	}
+
 	rw.WriteHeader(http.StatusNoContent)
 }
 
@@ -1937,6 +2031,24 @@ func (api *API) postChatMessages(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if req.PlanMode != nil {
+		switch *req.PlanMode {
+		case codersdk.ChatPlanModePlan, "":
+			// Valid.
+		default:
+			httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+				Message: "Invalid plan_mode value.",
+			})
+			return
+		}
+	}
+
+	var sendPlanMode *database.NullChatPlanMode
+	if req.PlanMode != nil {
+		resolvedPlanMode := planModeToNullChatPlanMode(*req.PlanMode)
+		sendPlanMode = &resolvedPlanMode
+	}
+
 	busyBehavior := chatd.SendMessageBusyBehaviorQueue
 	switch req.BusyBehavior {
 	case codersdk.ChatBusyBehaviorInterrupt:
@@ -1959,6 +2071,7 @@ func (api *API) postChatMessages(rw http.ResponseWriter, r *http.Request) {
 			Content:       contentBlocks,
 			ModelConfigID: req.ModelConfigID,
 			BusyBehavior:  busyBehavior,
+			PlanMode:      sendPlanMode,
 			MCPServerIDs:  req.MCPServerIDs,
 		},
 	)
@@ -2929,6 +3042,46 @@ type createChatWorkspaceSelection struct {
 	WorkspaceID uuid.NullUUID
 }
 
+func (api *API) validateChatWorkspaceSelection(
+	ctx context.Context,
+	r *http.Request,
+	workspaceID *uuid.UUID,
+) (
+	uuid.NullUUID,
+	database.Workspace,
+	int,
+	*codersdk.Response,
+) {
+	if workspaceID == nil {
+		return uuid.NullUUID{}, database.Workspace{}, 0, nil
+	}
+
+	workspace, err := api.Database.GetWorkspaceByID(ctx, *workspaceID)
+	if err != nil {
+		if httpapi.Is404Error(err) {
+			return uuid.NullUUID{}, database.Workspace{}, http.StatusBadRequest, &codersdk.Response{
+				Message: "Workspace not found or you do not have access to this resource",
+			}
+		}
+		return uuid.NullUUID{}, database.Workspace{}, http.StatusInternalServerError, &codersdk.Response{
+			Message: "Failed to get workspace.",
+			Detail:  err.Error(),
+		}
+	}
+
+	selection := uuid.NullUUID{
+		UUID:  workspace.ID,
+		Valid: true,
+	}
+	if !api.Authorize(r, policy.ActionSSH, workspace) {
+		return uuid.NullUUID{}, database.Workspace{}, http.StatusBadRequest, &codersdk.Response{
+			Message: "Workspace not found or you do not have access to this resource",
+		}
+	}
+
+	return selection, workspace, 0, nil
+}
+
 func (api *API) validateCreateChatWorkspaceSelection(
 	ctx context.Context,
 	r *http.Request,
@@ -2939,36 +3092,17 @@ func (api *API) validateCreateChatWorkspaceSelection(
 	*codersdk.Response,
 ) {
 	selection := createChatWorkspaceSelection{}
-	if req.WorkspaceID == nil {
+	workspaceID, workspace, status, resp := api.validateChatWorkspaceSelection(ctx, r, req.WorkspaceID)
+	if resp != nil {
+		return selection, status, resp
+	}
+	selection.WorkspaceID = workspaceID
+	if !workspaceID.Valid {
 		return selection, 0, nil
 	}
-
-	workspace, err := api.Database.GetWorkspaceByID(ctx, *req.WorkspaceID)
-	if err != nil {
-		if httpapi.Is404Error(err) {
-			return selection, http.StatusBadRequest, &codersdk.Response{
-				Message: "Workspace not found or you do not have access to this resource",
-			}
-		}
-		return selection, http.StatusInternalServerError, &codersdk.Response{
-			Message: "Failed to get workspace.",
-			Detail:  err.Error(),
-		}
-	}
-	selection.WorkspaceID = uuid.NullUUID{
-		UUID:  workspace.ID,
-		Valid: true,
-	}
-
 	if workspace.OrganizationID != req.OrganizationID {
 		return selection, http.StatusBadRequest, &codersdk.Response{
 			Message: "Workspace does not belong to the specified organization.",
-		}
-	}
-
-	if !api.Authorize(r, policy.ActionSSH, workspace) {
-		return selection, http.StatusBadRequest, &codersdk.Response{
-			Message: "Workspace not found or you do not have access to this resource",
 		}
 	}
 
@@ -3148,6 +3282,67 @@ func (api *API) putChatSystemPrompt(rw http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+// EXPERIMENTAL: this endpoint is experimental and is subject to change.
+//
+//nolint:revive // get-return: revive assumes get* must be a getter, but this is an HTTP handler.
+func (api *API) getChatPlanModeInstructions(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if !api.Authorize(r, policy.ActionUpdate, rbac.ResourceDeploymentConfig) {
+		httpapi.ResourceNotFound(rw)
+		return
+	}
+
+	instructions, err := api.Database.GetChatPlanModeInstructions(ctx)
+	if err != nil {
+		httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
+			Message: "Internal error fetching plan mode instructions.",
+			Detail:  err.Error(),
+		})
+		return
+	}
+
+	httpapi.Write(ctx, rw, http.StatusOK, codersdk.ChatPlanModeInstructionsResponse{
+		PlanModeInstructions: instructions,
+	})
+}
+
+// EXPERIMENTAL: this endpoint is experimental and is subject to change.
+func (api *API) putChatPlanModeInstructions(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if !api.Authorize(r, policy.ActionUpdate, rbac.ResourceDeploymentConfig) {
+		httpapi.Forbidden(rw)
+		return
+	}
+
+	// Cap the raw request body to prevent excessive memory use from
+	// payloads padded with invisible characters that sanitize away.
+	r.Body = http.MaxBytesReader(rw, r.Body, int64(2*maxSystemPromptLenBytes))
+
+	var req codersdk.UpdateChatPlanModeInstructionsRequest
+	if !httpapi.Read(ctx, rw, r, &req) {
+		return
+	}
+
+	sanitizedInstructions := chatd.SanitizePromptText(req.PlanModeInstructions)
+	if len(sanitizedInstructions) > maxSystemPromptLenBytes {
+		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+			Message: "Plan mode instructions exceed maximum length.",
+			Detail:  fmt.Sprintf("Maximum length is %d bytes, got %d.", maxSystemPromptLenBytes, len(sanitizedInstructions)),
+		})
+		return
+	}
+
+	if err := api.Database.UpsertChatPlanModeInstructions(ctx, sanitizedInstructions); err != nil {
+		httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
+			Message: "Internal error updating plan mode instructions.",
+			Detail:  err.Error(),
+		})
+		return
+	}
+
 	rw.WriteHeader(http.StatusNoContent)
 }
 
