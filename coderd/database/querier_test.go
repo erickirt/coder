@@ -1293,6 +1293,7 @@ func TestGetAuthorizedChats(t *testing.T) {
 		_, err := db.InsertChat(ctx, database.InsertChatParams{
 			OrganizationID:    org.ID,
 			Status:            database.ChatStatusWaiting,
+			ClientType:        database.ChatClientTypeUi,
 			OwnerID:           owner.ID,
 			LastModelConfigID: modelCfg.ID,
 			Title:             fmt.Sprintf("owner chat %d", i+1),
@@ -1305,6 +1306,7 @@ func TestGetAuthorizedChats(t *testing.T) {
 		_, err := db.InsertChat(ctx, database.InsertChatParams{
 			OrganizationID:    org.ID,
 			Status:            database.ChatStatusWaiting,
+			ClientType:        database.ChatClientTypeUi,
 			OwnerID:           member.ID,
 			LastModelConfigID: modelCfg.ID,
 			Title:             fmt.Sprintf("member chat %d", i+1),
@@ -1444,6 +1446,7 @@ func TestGetAuthorizedChats(t *testing.T) {
 			_, err := db.InsertChat(ctx, database.InsertChatParams{
 				OrganizationID:    org.ID,
 				Status:            database.ChatStatusWaiting,
+				ClientType:        database.ChatClientTypeUi,
 				OwnerID:           paginationUser.ID,
 				LastModelConfigID: modelCfg.ID,
 				Title:             fmt.Sprintf("pagination chat %d", i+1),
@@ -9898,6 +9901,7 @@ func TestInsertChatMessages(t *testing.T) {
 		chat, err := store.InsertChat(ctx, database.InsertChatParams{
 			OrganizationID:    org.ID,
 			Status:            database.ChatStatusWaiting,
+			ClientType:        database.ChatClientTypeUi,
 			OwnerID:           user.ID,
 			LastModelConfigID: modelConfigA.ID,
 			Title:             "test-chat-" + uuid.NewString(),
@@ -10072,6 +10076,7 @@ func TestGetChatMessagesForPromptByChatID(t *testing.T) {
 		chat, err := db.InsertChat(ctx, database.InsertChatParams{
 			OrganizationID:    org.ID,
 			Status:            database.ChatStatusWaiting,
+			ClientType:        database.ChatClientTypeUi,
 			OwnerID:           user.ID,
 			LastModelConfigID: modelCfg.ID,
 			Title:             "test-chat-" + uuid.NewString(),
@@ -10457,6 +10462,7 @@ func TestGetPRInsights(t *testing.T) {
 		chat, err := p.Store.InsertChat(context.Background(), database.InsertChatParams{
 			OrganizationID:    p.OrgID,
 			Status:            database.ChatStatusWaiting,
+			ClientType:        database.ChatClientTypeUi,
 			OwnerID:           p.UserID,
 			LastModelConfigID: p.ModelConfigID,
 			Title:             title,
@@ -10594,6 +10600,7 @@ func TestGetPRInsights(t *testing.T) {
 		chat, err := p.Store.InsertChat(context.Background(), database.InsertChatParams{
 			OrganizationID:    p.OrgID,
 			Status:            database.ChatStatusWaiting,
+			ClientType:        database.ChatClientTypeUi,
 			OwnerID:           p.UserID,
 			LastModelConfigID: p.ModelConfigID,
 			Title:             title,
@@ -11014,6 +11021,7 @@ func TestChatPinOrderQueries(t *testing.T) {
 		chat, err := db.InsertChat(ctx, database.InsertChatParams{
 			OrganizationID:    orgID,
 			Status:            database.ChatStatusWaiting,
+			ClientType:        database.ChatClientTypeUi,
 			OwnerID:           ownerID,
 			LastModelConfigID: modelCfgID,
 			Title:             title,
@@ -11199,6 +11207,7 @@ func TestChatLabels(t *testing.T) {
 		chat, err := db.InsertChat(ctx, database.InsertChatParams{
 			OrganizationID:    org.ID,
 			Status:            database.ChatStatusWaiting,
+			ClientType:        database.ChatClientTypeUi,
 			OwnerID:           owner.ID,
 			LastModelConfigID: modelCfg.ID,
 			Title:             "labeled-chat",
@@ -11223,6 +11232,7 @@ func TestChatLabels(t *testing.T) {
 		chat, err := db.InsertChat(ctx, database.InsertChatParams{
 			OrganizationID:    org.ID,
 			Status:            database.ChatStatusWaiting,
+			ClientType:        database.ChatClientTypeUi,
 			OwnerID:           owner.ID,
 			LastModelConfigID: modelCfg.ID,
 			Title:             "no-labels-chat",
@@ -11240,6 +11250,7 @@ func TestChatLabels(t *testing.T) {
 		chat, err := db.InsertChat(ctx, database.InsertChatParams{
 			OrganizationID:    org.ID,
 			Status:            database.ChatStatusWaiting,
+			ClientType:        database.ChatClientTypeUi,
 			OwnerID:           owner.ID,
 			LastModelConfigID: modelCfg.ID,
 			Title:             "update-labels-chat",
@@ -11282,6 +11293,7 @@ func TestChatLabels(t *testing.T) {
 		chat, err := db.InsertChat(ctx, database.InsertChatParams{
 			OrganizationID:    org.ID,
 			Status:            database.ChatStatusWaiting,
+			ClientType:        database.ChatClientTypeUi,
 			OwnerID:           owner.ID,
 			LastModelConfigID: modelCfg.ID,
 			Title:             "original-title",
@@ -11320,6 +11332,7 @@ func TestChatLabels(t *testing.T) {
 			_, err = db.InsertChat(ctx, database.InsertChatParams{
 				OrganizationID:    org.ID,
 				Status:            database.ChatStatusWaiting,
+				ClientType:        database.ChatClientTypeUi,
 				OwnerID:           owner.ID,
 				LastModelConfigID: modelCfg.ID, Title: tc.title,
 				Labels: pqtype.NullRawMessage{
@@ -11410,6 +11423,7 @@ func TestDeleteChatDebugDataAfterMessageIDIncludesTriggeredRuns(t *testing.T) {
 	chat, err := store.InsertChat(ctx, database.InsertChatParams{
 		OrganizationID:    org.ID,
 		Status:            database.ChatStatusWaiting,
+		ClientType:        database.ChatClientTypeUi,
 		OwnerID:           user.ID,
 		LastModelConfigID: modelCfg.ID,
 		Title:             "chat-debug-rollback-" + uuid.NewString(),
@@ -11596,6 +11610,7 @@ func TestFinalizeStaleChatDebugRows(t *testing.T) {
 	chat, err := store.InsertChat(ctx, database.InsertChatParams{
 		OrganizationID:    org.ID,
 		Status:            database.ChatStatusWaiting,
+		ClientType:        database.ChatClientTypeUi,
 		OwnerID:           user.ID,
 		LastModelConfigID: modelCfg.ID,
 		Title:             "chat-finalize-" + uuid.NewString(),
@@ -11952,6 +11967,7 @@ func TestChatDebugSQLGuards(t *testing.T) {
 	chatA, err := store.InsertChat(ctx, database.InsertChatParams{
 		OrganizationID:    org.ID,
 		Status:            database.ChatStatusWaiting,
+		ClientType:        database.ChatClientTypeUi,
 		OwnerID:           user.ID,
 		LastModelConfigID: modelCfg.ID,
 		Title:             "chat-guard-A-" + uuid.NewString(),
@@ -11961,6 +11977,7 @@ func TestChatDebugSQLGuards(t *testing.T) {
 	chatB, err := store.InsertChat(ctx, database.InsertChatParams{
 		OrganizationID:    org.ID,
 		Status:            database.ChatStatusWaiting,
+		ClientType:        database.ChatClientTypeUi,
 		OwnerID:           user.ID,
 		LastModelConfigID: modelCfg.ID,
 		Title:             "chat-guard-B-" + uuid.NewString(),
@@ -12082,6 +12099,7 @@ func TestChatDebugRunCOALESCEPreservation(t *testing.T) {
 	chat, err := store.InsertChat(ctx, database.InsertChatParams{
 		OrganizationID:    org.ID,
 		Status:            database.ChatStatusWaiting,
+		ClientType:        database.ChatClientTypeUi,
 		OwnerID:           user.ID,
 		LastModelConfigID: modelCfg.ID,
 		Title:             "chat-debug-coalesce-" + uuid.NewString(),
@@ -12195,6 +12213,7 @@ func TestChatDebugStepCOALESCEPreservation(t *testing.T) {
 	chat, err := store.InsertChat(ctx, database.InsertChatParams{
 		OrganizationID:    org.ID,
 		Status:            database.ChatStatusWaiting,
+		ClientType:        database.ChatClientTypeUi,
 		OwnerID:           user.ID,
 		LastModelConfigID: modelCfg.ID,
 		Title:             "chat-step-coalesce-" + uuid.NewString(),
@@ -12318,6 +12337,7 @@ func TestDeleteChatDebugDataAfterMessageIDNullMessagesSurvive(t *testing.T) {
 	chat, err := store.InsertChat(ctx, database.InsertChatParams{
 		OrganizationID:    org.ID,
 		Status:            database.ChatStatusWaiting,
+		ClientType:        database.ChatClientTypeUi,
 		OwnerID:           user.ID,
 		LastModelConfigID: modelCfg.ID,
 		Title:             "chat-debug-null-msg-" + uuid.NewString(),
@@ -12406,6 +12426,7 @@ func TestChatHasUnread(t *testing.T) {
 	chat, err := store.InsertChat(ctx, database.InsertChatParams{
 		OrganizationID:    org.ID,
 		Status:            database.ChatStatusWaiting,
+		ClientType:        database.ChatClientTypeUi,
 		OwnerID:           user.ID,
 		LastModelConfigID: modelCfg.ID,
 		Title:             "test-chat-" + uuid.NewString(),

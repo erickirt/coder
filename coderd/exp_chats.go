@@ -568,6 +568,18 @@ func (api *API) postChats(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	clientType := database.ChatClientTypeApi
+	if req.ClientType != "" {
+		clientType = database.ChatClientType(req.ClientType)
+		if !clientType.Valid() {
+			httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+				Message: "Invalid client_type.",
+				Detail:  fmt.Sprintf("got %q, want one of %v", req.ClientType, database.AllChatClientTypeValues()),
+			})
+			return
+		}
+	}
+
 	chat, err := api.chatDaemon.CreateChat(ctx, chatd.CreateOptions{
 		OrganizationID:     req.OrganizationID,
 		OwnerID:            apiKey.UserID,
@@ -575,6 +587,7 @@ func (api *API) postChats(rw http.ResponseWriter, r *http.Request) {
 		Title:              title,
 		ModelConfigID:      modelConfigID,
 		PlanMode:           planModeToNullChatPlanMode(req.PlanMode),
+		ClientType:         clientType,
 		SystemPrompt:       req.SystemPrompt,
 		InitialUserContent: contentBlocks,
 		MCPServerIDs:       mcpServerIDs,
