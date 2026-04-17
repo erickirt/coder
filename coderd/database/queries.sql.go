@@ -5809,6 +5809,48 @@ func (q *sqlQuerier) GetChatDiffStatusByChatID(ctx context.Context, chatID uuid.
 	return i, err
 }
 
+const getChatDiffStatusSummary = `-- name: GetChatDiffStatusSummary :one
+WITH deduped AS (
+    SELECT DISTINCT ON (COALESCE(NULLIF(cds.url, ''), c.id::text))
+        cds.pull_request_state
+    FROM chat_diff_statuses cds
+    JOIN chats c ON c.id = cds.chat_id
+    WHERE cds.pull_request_state IN ('open', 'merged', 'closed')
+    ORDER BY COALESCE(NULLIF(cds.url, ''), c.id::text), cds.updated_at DESC, c.id DESC
+)
+SELECT
+    COUNT(*)::bigint AS total,
+    COUNT(*) FILTER (WHERE pull_request_state = 'open')::bigint AS open,
+    COUNT(*) FILTER (WHERE pull_request_state = 'merged')::bigint AS merged,
+    COUNT(*) FILTER (WHERE pull_request_state = 'closed')::bigint AS closed
+FROM deduped
+`
+
+type GetChatDiffStatusSummaryRow struct {
+	Total  int64 `db:"total" json:"total"`
+	Open   int64 `db:"open" json:"open"`
+	Merged int64 `db:"merged" json:"merged"`
+	Closed int64 `db:"closed" json:"closed"`
+}
+
+// Returns aggregate PR counts across all agent chats for telemetry.
+// Deduplicates by PR URL so forked chats referencing the same pull
+// request are counted once (using the most recently refreshed state).
+// Total is derived from the three recognized state buckets and
+// always equals open + merged + closed; other non-NULL states are
+// intentionally excluded from these aggregates.
+func (q *sqlQuerier) GetChatDiffStatusSummary(ctx context.Context) (GetChatDiffStatusSummaryRow, error) {
+	row := q.db.QueryRowContext(ctx, getChatDiffStatusSummary)
+	var i GetChatDiffStatusSummaryRow
+	err := row.Scan(
+		&i.Total,
+		&i.Open,
+		&i.Merged,
+		&i.Closed,
+	)
+	return i, err
+}
+
 const getChatDiffStatusesByChatIDs = `-- name: GetChatDiffStatusesByChatIDs :many
 SELECT
     chat_id, url, pull_request_state, changes_requested, additions, deletions, changed_files, refreshed_at, stale_at, created_at, updated_at, git_branch, git_remote_origin, pull_request_title, pull_request_draft, author_login, author_avatar_url, base_branch, pr_number, commits, approved, reviewer_count, head_branch
@@ -6621,12 +6663,14 @@ func (q *sqlQuerier) GetChatsByWorkspaceIDs(ctx context.Context, ids []uuid.UUID
 
 const getChatsUpdatedAfter = `-- name: GetChatsUpdatedAfter :many
 SELECT
-    id, owner_id, created_at, updated_at, status,
-    (parent_chat_id IS NOT NULL)::bool AS has_parent,
-    root_chat_id, workspace_id,
-    mode, archived, last_model_config_id, client_type
-FROM chats
-WHERE updated_at > $1
+    c.id, c.owner_id, c.created_at, c.updated_at, c.status,
+    (c.parent_chat_id IS NOT NULL)::bool AS has_parent,
+    c.root_chat_id, c.workspace_id,
+    c.mode, c.archived, c.last_model_config_id, c.client_type,
+    cds.pull_request_state
+FROM chats c
+LEFT JOIN chat_diff_statuses cds ON cds.chat_id = c.id
+WHERE c.updated_at > $1
 `
 
 type GetChatsUpdatedAfterRow struct {
@@ -6642,6 +6686,7 @@ type GetChatsUpdatedAfterRow struct {
 	Archived          bool           `db:"archived" json:"archived"`
 	LastModelConfigID uuid.UUID      `db:"last_model_config_id" json:"last_model_config_id"`
 	ClientType        ChatClientType `db:"client_type" json:"client_type"`
+	PullRequestState  sql.NullString `db:"pull_request_state" json:"pull_request_state"`
 }
 
 // Retrieves chats updated after the given timestamp for telemetry
@@ -6669,6 +6714,7 @@ func (q *sqlQuerier) GetChatsUpdatedAfter(ctx context.Context, updatedAfter time
 			&i.Archived,
 			&i.LastModelConfigID,
 			&i.ClientType,
+			&i.PullRequestState,
 		); err != nil {
 			return nil, err
 		}
