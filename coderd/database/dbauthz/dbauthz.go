@@ -833,7 +833,7 @@ func AsWorkspaceBuilder(ctx context.Context) context.Context {
 }
 
 // AsChatd returns a context with an actor scoped to the chat
-// daemon's background worker. It can manage chats and read
+// daemon's background worker. It can manage chats and access
 // workspaces and deployment config, but nothing else.
 func AsChatd(ctx context.Context) context.Context {
 	return As(ctx, subjectChatd)
@@ -2677,6 +2677,13 @@ func (q *querier) GetChatDiffStatusesByChatIDs(ctx context.Context, chatIDs []uu
 	}
 
 	return q.db.GetChatDiffStatusesByChatIDs(ctx, chatIDs)
+}
+
+func (q *querier) GetChatExploreModelOverride(ctx context.Context) (string, error) {
+	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceDeploymentConfig); err != nil {
+		return "", err
+	}
+	return q.db.GetChatExploreModelOverride(ctx)
 }
 
 func (q *querier) GetChatFileByID(ctx context.Context, id uuid.UUID) (database.ChatFile, error) {
@@ -7294,6 +7301,13 @@ func (q *querier) UpsertChatDiffStatusReference(ctx context.Context, arg databas
 		return database.ChatDiffStatus{}, err
 	}
 	return q.db.UpsertChatDiffStatusReference(ctx, arg)
+}
+
+func (q *querier) UpsertChatExploreModelOverride(ctx context.Context, value string) error {
+	if err := q.authorizeContext(ctx, policy.ActionUpdate, rbac.ResourceDeploymentConfig); err != nil {
+		return err
+	}
+	return q.db.UpsertChatExploreModelOverride(ctx, value)
 }
 
 func (q *querier) UpsertChatIncludeDefaultSystemPrompt(ctx context.Context, includeDefaultSystemPrompt bool) error {
