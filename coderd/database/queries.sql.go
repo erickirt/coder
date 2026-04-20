@@ -6881,8 +6881,8 @@ WHERE
         ELSE chats.archived = $2 :: boolean
     END
 ORDER BY
-    chats.created_at ASC,
-    chats.id ASC
+    chats.created_at DESC,
+    chats.id DESC
 `
 
 type GetChildChatsByParentIDsParams struct {
