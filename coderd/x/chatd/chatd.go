@@ -1462,20 +1462,69 @@ func (p *Server) ArchiveChat(ctx context.Context, chat database.Chat) error {
 	return nil
 }
 
-// UnarchiveChat unarchives a chat family and publishes created events for
-// each affected chat so watching clients see every chat that reappeared.
+// ErrChildUnarchiveParentArchived is returned by UnarchiveChat when a
+// child unarchive is rejected because the parent is still archived.
+// The patchChat handler maps this to a 400 response.
+var ErrChildUnarchiveParentArchived = xerrors.New(
+	"cannot unarchive child chat while parent is archived",
+)
+
+// UnarchiveChat unarchives a chat family and broadcasts created events.
+// Root chats cascade through UnarchiveChatByID. Child chats run under
+// a row-level lock on the child (GetChatByIDForUpdate) with an
+// in-transaction re-read of the parent, returning
+// ErrChildUnarchiveParentArchived when the parent is archived and a
+// no-op when the child is already active.
+//
+// The child is locked before the parent is read to avoid deadlocking
+// with a concurrent ArchiveChatByID cascade, which visits child rows
+// before the parent.
 func (p *Server) UnarchiveChat(ctx context.Context, chat database.Chat) error {
 	if chat.ID == uuid.Nil {
 		return xerrors.New("chat_id is required")
 	}
 
-	return p.applyChatLifecycleTransition(
-		ctx,
-		chat.ID,
-		"unarchive",
-		codersdk.ChatWatchEventKindCreated,
-		p.db.UnarchiveChatByID,
-	)
+	if !chat.ParentChatID.Valid {
+		return p.applyChatLifecycleTransition(
+			ctx,
+			chat.ID,
+			"unarchive",
+			codersdk.ChatWatchEventKindCreated,
+			p.db.UnarchiveChatByID,
+		)
+	}
+
+	var updated []database.Chat
+	if err := p.db.InTx(func(tx database.Store) error {
+		locked, err := tx.GetChatByIDForUpdate(ctx, chat.ID)
+		if err != nil {
+			return xerrors.Errorf("lock child for unarchive: %w", err)
+		}
+		if !locked.Archived {
+			// Already unarchived by a concurrent caller; idempotent no-op.
+			return nil
+		}
+		parent, err := tx.GetChatByID(ctx, chat.ParentChatID.UUID)
+		if err != nil {
+			return xerrors.Errorf("load parent chat: %w", err)
+		}
+		if parent.Archived {
+			return ErrChildUnarchiveParentArchived
+		}
+		updated, err = tx.UnarchiveChatByID(ctx, chat.ID)
+		if err != nil {
+			return xerrors.Errorf("unarchive child chat: %w", err)
+		}
+		return nil
+	}, nil); err != nil {
+		if errors.Is(err, ErrChildUnarchiveParentArchived) {
+			return ErrChildUnarchiveParentArchived
+		}
+		return err
+	}
+
+	p.publishChatPubsubEvents(updated, codersdk.ChatWatchEventKindCreated)
+	return nil
 }
 
 func (p *Server) applyChatLifecycleTransition(

@@ -336,13 +336,39 @@ func (api *API) listChats(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract the Chat objects for diff status lookup.
-	dbChats := make([]database.Chat, len(chatRows))
+	// Collect root chat IDs so we can fetch their children.
+	rootIDs := make([]uuid.UUID, len(chatRows))
 	for i, row := range chatRows {
-		dbChats[i] = row.Chat
+		rootIDs[i] = row.Chat.ID
 	}
 
-	diffStatusesByChatID, err := api.getChatDiffStatusesByChatID(ctx, dbChats)
+	// Embed children matching the caller's archive filter so
+	// sidebar views don't surface state-mismatched rows.
+	var childRows []database.GetChildChatsByParentIDsRow
+	if len(rootIDs) > 0 {
+		childRows, err = api.Database.GetChildChatsByParentIDs(ctx, database.GetChildChatsByParentIDsParams{
+			ParentIds: rootIDs,
+			Archived:  searchParams.Archived,
+		})
+		if err != nil {
+			httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
+				Message: "Failed to list child chats.",
+				Detail:  err.Error(),
+			})
+			return
+		}
+	}
+
+	// Collect all chat objects (root + child) for diff status lookup.
+	allChats := make([]database.Chat, 0, len(chatRows)+len(childRows))
+	for _, row := range chatRows {
+		allChats = append(allChats, row.Chat)
+	}
+	for _, row := range childRows {
+		allChats = append(allChats, row.Chat)
+	}
+
+	diffStatusesByChatID, err := api.getChatDiffStatusesByChatID(ctx, allChats)
 	if err != nil {
 		httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
 			Message: "Failed to list chats.",
@@ -351,7 +377,7 @@ func (api *API) listChats(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpapi.Write(ctx, rw, http.StatusOK, db2sdk.ChatRows(chatRows, diffStatusesByChatID))
+	httpapi.Write(ctx, rw, http.StatusOK, db2sdk.ChatRowsWithChildren(chatRows, childRows, diffStatusesByChatID))
 }
 
 func (api *API) getChatDiffStatusesByChatID(
@@ -1506,7 +1532,41 @@ func (api *API) getChat(rw http.ResponseWriter, r *http.Request) {
 	// Hydrate file metadata for all files linked to this chat.
 	chatFiles := api.fetchChatFileMetadata(ctx, chat.ID)
 
-	httpapi.Write(ctx, rw, http.StatusOK, db2sdk.Chat(chat, diffStatus, chatFiles))
+	sdkChat := db2sdk.Chat(chat, diffStatus, chatFiles)
+
+	// For root chats, embed children so callers get a complete
+	// tree in a single response.
+	if !chat.ParentChatID.Valid {
+		// Embed children matching the parent's archive state.
+		childRows, err := api.Database.GetChildChatsByParentIDs(ctx, database.GetChildChatsByParentIDsParams{
+			ParentIds: []uuid.UUID{chat.ID},
+			Archived:  sql.NullBool{Bool: chat.Archived, Valid: true},
+		})
+		if err != nil {
+			httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
+				Message: "Failed to fetch child chats.",
+				Detail:  err.Error(),
+			})
+			return
+		}
+		// Look up diff statuses for children.
+		childChats := make([]database.Chat, len(childRows))
+		for i, row := range childRows {
+			childChats[i] = row.Chat
+		}
+		childDiffStatuses, err := api.getChatDiffStatusesByChatID(ctx, childChats)
+		if err != nil {
+			httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
+				Message: "Failed to fetch child chat diff statuses.",
+				Detail:  err.Error(),
+			})
+			return
+		}
+
+		sdkChat.Children = db2sdk.ChildChatRows(childRows, childDiffStatuses)
+	}
+
+	httpapi.Write(ctx, rw, http.StatusOK, sdkChat)
 }
 
 // EXPERIMENTAL: this endpoint is experimental and is subject to change.
@@ -1907,6 +1967,16 @@ func (api *API) patchChat(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Archive invariant is one-way: parent archived implies
+		// child archived. Parent archive/unarchive cascade via
+		// root_chat_id; individual child archive is permitted;
+		// child unarchive while the parent is archived is rejected
+		// (enforced atomically in chatd.Server.UnarchiveChat).
+		if chat.ParentChatID.Valid && !archived {
+			if done := api.writeChildUnarchiveGuard(ctx, rw, chat); done {
+				return
+			}
+		}
 		var err error
 		// Use chatDaemon when available so it can interrupt active
 		// processing before broadcasting archive state. Fall back to
@@ -1925,6 +1995,12 @@ func (api *API) patchChat(rw http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if err != nil {
+			if errors.Is(err, chatd.ErrChildUnarchiveParentArchived) {
+				httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+					Message: "Cannot unarchive a child chat while its parent is archived. Unarchive the parent chat to cascade.",
+				})
+				return
+			}
 			action := "archive"
 			if !archived {
 				action = "unarchive"
@@ -2044,6 +2120,38 @@ func (api *API) patchChat(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	rw.WriteHeader(http.StatusNoContent)
+}
+
+// writeChildUnarchiveGuard returns a 400 early when a child unarchive
+// request obviously races an archived parent. The durable invariant
+// is enforced atomically in chatd.Server.UnarchiveChat; this guard
+// just surfaces the error before we take any locks.
+//
+// Returns true when a response has been written.
+func (api *API) writeChildUnarchiveGuard(
+	ctx context.Context,
+	rw http.ResponseWriter,
+	chat database.Chat,
+) bool {
+	parent, err := api.Database.GetChatByID(ctx, chat.ParentChatID.UUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			httpapi.ResourceNotFound(rw)
+			return true
+		}
+		httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
+			Message: "Failed to load parent chat.",
+			Detail:  err.Error(),
+		})
+		return true
+	}
+	if parent.Archived {
+		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+			Message: "Cannot unarchive a child chat while its parent is archived. Unarchive the parent chat to cascade.",
+		})
+		return true
+	}
+	return false
 }
 
 // EXPERIMENTAL: this endpoint is experimental and is subject to change.

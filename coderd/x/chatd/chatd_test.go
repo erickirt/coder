@@ -644,11 +644,19 @@ func TestExploreSubagentIsReadOnly(t *testing.T) {
 	require.True(t, requestHasSystemSubstring(childRequests[0], "You are in Explore Mode as a delegated sub-agent."))
 	require.False(t, requestHasSystemSubstring(rootRequests[0], "You are in Explore Mode as a delegated sub-agent."))
 
-	allChats, err := db.GetChats(dbauthz.AsChatd(ctx), database.GetChatsParams{OwnerID: user.UserID})
+	rootChats, err := db.GetChats(dbauthz.AsChatd(ctx), database.GetChatsParams{OwnerID: user.UserID})
+	require.NoError(t, err)
+	rootIDs := make([]uuid.UUID, 0, len(rootChats))
+	for _, root := range rootChats {
+		rootIDs = append(rootIDs, root.Chat.ID)
+	}
+	childRows, err := db.GetChildChatsByParentIDs(dbauthz.AsChatd(ctx), database.GetChildChatsByParentIDsParams{
+		ParentIds: rootIDs,
+	})
 	require.NoError(t, err)
 	var exploreChildren []database.Chat
-	for _, candidate := range allChats {
-		if candidate.Chat.ParentChatID.Valid && candidate.Chat.Mode.Valid && candidate.Chat.Mode.ChatMode == database.ChatModeExplore {
+	for _, candidate := range childRows {
+		if candidate.Chat.Mode.Valid && candidate.Chat.Mode.ChatMode == database.ChatModeExplore {
 			exploreChildren = append(exploreChildren, candidate.Chat)
 		}
 	}
@@ -731,6 +739,127 @@ func TestArchiveChatMovesPendingChatToWaiting(t *testing.T) {
 	require.False(t, fromDB.HeartbeatAt.Valid)
 	require.True(t, fromDB.Archived)
 	require.Zero(t, fromDB.PinOrder)
+}
+
+// TestUnarchiveChildChat covers the deterministic branches of the
+// Server.UnarchiveChat child path: happy path, archived-parent reject,
+// and already-active no-op.
+func TestUnarchiveChildChat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ChildWithActiveParentUnarchives", func(t *testing.T) {
+		t.Parallel()
+
+		db, ps := dbtestutil.NewDB(t)
+		replica := newTestServer(t, db, ps, uuid.New())
+		ctx := testutil.Context(t, testutil.WaitLong)
+		user, org, model := seedChatDependencies(ctx, t, db)
+
+		parent, child := insertParentWithArchivedChild(ctx, t, db, user, org, model)
+
+		require.NoError(t, replica.UnarchiveChat(ctx, child))
+
+		dbChild, err := db.GetChatByID(ctx, child.ID)
+		require.NoError(t, err)
+		require.False(t, dbChild.Archived, "child should be unarchived")
+
+		dbParent, err := db.GetChatByID(ctx, parent.ID)
+		require.NoError(t, err)
+		require.False(t, dbParent.Archived, "parent should stay active")
+	})
+
+	t.Run("ChildWithArchivedParentRejected", func(t *testing.T) {
+		t.Parallel()
+
+		db, ps := dbtestutil.NewDB(t)
+		replica := newTestServer(t, db, ps, uuid.New())
+		ctx := testutil.Context(t, testutil.WaitLong)
+		user, org, model := seedChatDependencies(ctx, t, db)
+
+		parent, child := insertParentWithArchivedChild(ctx, t, db, user, org, model)
+		_, err := db.ArchiveChatByID(ctx, parent.ID)
+		require.NoError(t, err)
+
+		err = replica.UnarchiveChat(ctx, child)
+		require.ErrorIs(t, err, chatd.ErrChildUnarchiveParentArchived)
+
+		dbChild, err := db.GetChatByID(ctx, child.ID)
+		require.NoError(t, err)
+		require.True(t, dbChild.Archived, "child should remain archived")
+	})
+
+	t.Run("AlreadyActiveChildNoOp", func(t *testing.T) {
+		t.Parallel()
+
+		db, ps := dbtestutil.NewDB(t)
+		replica := newTestServer(t, db, ps, uuid.New())
+		ctx := testutil.Context(t, testutil.WaitLong)
+		user, org, model := seedChatDependencies(ctx, t, db)
+
+		_, child := insertParentWithActiveChild(ctx, t, db, user, org, model)
+
+		require.NoError(t, replica.UnarchiveChat(ctx, child))
+
+		dbChild, err := db.GetChatByID(ctx, child.ID)
+		require.NoError(t, err)
+		require.False(t, dbChild.Archived, "child should stay active")
+	})
+}
+
+// insertParentWithActiveChild creates a parent chat and an active
+// child chat linked to it. Both are returned in their initial
+// (active) state.
+func insertParentWithActiveChild(
+	ctx context.Context,
+	t *testing.T,
+	db database.Store,
+	user database.User,
+	org database.Organization,
+	model database.ChatModelConfig,
+) (parent database.Chat, child database.Chat) {
+	t.Helper()
+	var err error
+	parent, err = db.InsertChat(ctx, database.InsertChatParams{
+		OrganizationID:    org.ID,
+		OwnerID:           user.ID,
+		Status:            database.ChatStatusWaiting,
+		ClientType:        database.ChatClientTypeUi,
+		LastModelConfigID: model.ID,
+		Title:             "parent",
+	})
+	require.NoError(t, err)
+	child, err = db.InsertChat(ctx, database.InsertChatParams{
+		OrganizationID:    org.ID,
+		OwnerID:           user.ID,
+		Status:            database.ChatStatusWaiting,
+		ClientType:        database.ChatClientTypeUi,
+		LastModelConfigID: model.ID,
+		Title:             "child",
+		ParentChatID:      uuid.NullUUID{UUID: parent.ID, Valid: true},
+		RootChatID:        uuid.NullUUID{UUID: parent.ID, Valid: true},
+	})
+	require.NoError(t, err)
+	return parent, child
+}
+
+// insertParentWithArchivedChild creates an active parent and an
+// individually-archived child. The returned child reflects its
+// current (archived) state in the DB.
+func insertParentWithArchivedChild(
+	ctx context.Context,
+	t *testing.T,
+	db database.Store,
+	user database.User,
+	org database.Organization,
+	model database.ChatModelConfig,
+) (parent database.Chat, child database.Chat) {
+	t.Helper()
+	parent, child = insertParentWithActiveChild(ctx, t, db, user, org, model)
+	_, err := db.ArchiveChatByID(ctx, child.ID)
+	require.NoError(t, err)
+	child, err = db.GetChatByID(ctx, child.ID)
+	require.NoError(t, err)
+	return parent, child
 }
 
 func TestArchiveChatInterruptsActiveProcessing(t *testing.T) {
@@ -4976,15 +5105,13 @@ func TestComputerUseSubagentToolsAndModel(t *testing.T) {
 
 	// 6. Verify the child chat has Mode = computer_use in
 	//    the DB.
-	allChats, err := db.GetChats(ctx, database.GetChatsParams{
-		OwnerID: user.ID,
+	childRows, err := db.GetChildChatsByParentIDs(ctx, database.GetChildChatsByParentIDsParams{
+		ParentIds: []uuid.UUID{chat.ID},
 	})
 	require.NoError(t, err)
-	var children []database.Chat
-	for _, c := range allChats {
-		if c.Chat.ParentChatID.Valid && c.Chat.ParentChatID.UUID == chat.ID {
-			children = append(children, c.Chat)
-		}
+	children := make([]database.Chat, 0, len(childRows))
+	for _, row := range childRows {
+		children = append(children, row.Chat)
 	}
 	require.Len(t, children, 1)
 	require.True(t, children[0].Mode.Valid)
