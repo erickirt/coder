@@ -2790,6 +2790,7 @@ export interface CreateMCPServerConfigRequest {
 	readonly availability: string;
 	readonly enabled: boolean;
 	readonly model_intent: boolean;
+	readonly allow_in_plan_mode: boolean;
 }
 
 // From codersdk/organizations.go
@@ -4461,6 +4462,7 @@ export interface MCPServerConfig {
 	readonly availability: string; // "force_on", "default_on", "default_off"
 	readonly enabled: boolean;
 	readonly model_intent: boolean;
+	readonly allow_in_plan_mode: boolean;
 	readonly created_at: string;
 	readonly updated_at: string;
 	/**
@@ -7796,6 +7798,7 @@ export interface UpdateMCPServerConfigRequest {
 	readonly availability?: string;
 	readonly enabled?: boolean;
 	readonly model_intent?: boolean;
+	readonly allow_in_plan_mode?: boolean;
 }
 
 // From codersdk/notifications.go
