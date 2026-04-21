@@ -6236,6 +6236,7 @@ export interface ResolveAutostartResponse {
 export type ResourceType =
 	| "ai_seat"
 	| "api_key"
+	| "chat"
 	| "convert_login"
 	| "custom_role"
 	| "git_ssh_key"
@@ -6265,6 +6266,7 @@ export type ResourceType =
 export const ResourceTypes: ResourceType[] = [
 	"ai_seat",
 	"api_key",
+	"chat",
 	"convert_login",
 	"custom_role",
 	"git_ssh_key",
