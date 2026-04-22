@@ -1391,3 +1391,32 @@ export const SourcesOnlyAssistantSpacing: Story = {
 		).toBeInTheDocument();
 	},
 };
+
+export const NoRenderableContentFallbackSpacing: Story = {
+	args: {
+		...defaultArgs,
+		parsedMessages: buildMessages([
+			{
+				...baseMessage,
+				id: 101,
+				role: "assistant",
+				content: [],
+			},
+			{
+				...baseMessage,
+				id: 102,
+				role: "user",
+				content: [{ type: "text", text: "Thanks for trying!" }],
+			},
+		]),
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		expect(
+			canvas.getByText("Message has no renderable content."),
+		).toBeInTheDocument();
+		expect(
+			document.querySelector('[data-testid="assistant-bottom-spacer"]'),
+		).toBeInTheDocument();
+	},
+};
