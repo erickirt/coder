@@ -9,6 +9,7 @@ import {
 	cancelChatListRefetches,
 	chatCostSummary,
 	chatCostSummaryKey,
+	chatDebugRunsKey,
 	chatDiffContentsKey,
 	chatKey,
 	chatMessagesKey,
@@ -737,6 +738,8 @@ describe("mutation invalidation scope", () => {
 		queryClient.setQueryData(chatKey(chatId), makeChat(chatId));
 		// Messages: ["chats", chatId, "messages"]
 		queryClient.setQueryData(chatMessagesKey(chatId), []);
+		// Debug runs: ["chats", chatId, "debug-runs"]
+		queryClient.setQueryData(chatDebugRunsKey(chatId), []);
 		// Diff contents: ["chats", chatId, "diff-contents"]
 		queryClient.setQueryData(chatDiffContentsKey(chatId), { files: [] });
 		// Cost summary: ["chats", "costSummary", "me", undefined]
@@ -758,13 +761,9 @@ describe("mutation invalidation scope", () => {
 		const chatId = "chat-1";
 		seedAllActiveQueries(queryClient, chatId);
 
-		// createChatMessage has no onSuccess handler — the WebSocket
-		// stream covers all real-time updates. Verify that constructing
-		// the mutation config does not define one.
 		const mutation = createChatMessage(queryClient, chatId);
-		expect(mutation).not.toHaveProperty("onSuccess");
+		await mutation.onSuccess?.();
 
-		// Since there is no onSuccess, no queries should be invalidated.
 		for (const { label, key } of unrelatedKeys(chatId)) {
 			const state = queryClient.getQueryState(key);
 			expect(
@@ -774,14 +773,18 @@ describe("mutation invalidation scope", () => {
 		}
 	});
 
-	it("createChatMessage does not invalidate chat detail or messages (WebSocket handles these)", async () => {
+	it("createChatMessage invalidates only debug runs, not chat detail or messages", async () => {
 		const queryClient = createTestQueryClient();
 		const chatId = "chat-1";
 		seedAllActiveQueries(queryClient, chatId);
 
-		// No onSuccess handler exists.
 		const mutation = createChatMessage(queryClient, chatId);
-		expect(mutation).not.toHaveProperty("onSuccess");
+		await mutation.onSuccess?.();
+
+		expect(
+			queryClient.getQueryState(chatDebugRunsKey(chatId))?.isInvalidated,
+			"chatDebugRunsKey should be invalidated",
+		).toBe(true);
 
 		const chatState = queryClient.getQueryState(chatKey(chatId));
 		expect(
@@ -815,7 +818,7 @@ describe("mutation invalidation scope", () => {
 		}
 	});
 
-	it("editChatMessage invalidates only chat detail and messages", async () => {
+	it("editChatMessage invalidates chat detail, messages, and debug runs", async () => {
 		const queryClient = createTestQueryClient();
 		const chatId = "chat-1";
 		seedAllActiveQueries(queryClient, chatId);
@@ -825,8 +828,9 @@ describe("mutation invalidation scope", () => {
 
 		await new Promise((r) => setTimeout(r, 0));
 
-		// These two should still be invalidated — editing changes
-		// message content and potentially the chat's updated_at.
+		// These queries should be invalidated -- editing changes
+		// message content, may update the chat record, and can start
+		// a new debug run.
 		const chatState = queryClient.getQueryState(chatKey(chatId));
 		expect(chatState?.isInvalidated, "chatKey should be invalidated").toBe(
 			true,
@@ -836,6 +840,11 @@ describe("mutation invalidation scope", () => {
 		expect(
 			messagesState?.isInvalidated,
 			"chatMessagesKey should be invalidated",
+		).toBe(true);
+
+		expect(
+			queryClient.getQueryState(chatDebugRunsKey(chatId))?.isInvalidated,
+			"chatDebugRunsKey should be invalidated",
 		).toBe(true);
 	});
 
@@ -1170,15 +1179,18 @@ describe("mutation invalidation scope", () => {
 		);
 	});
 
-	it("interruptChat does not invalidate unrelated queries", async () => {
+	it("interruptChat invalidates debug runs without touching unrelated queries", async () => {
 		const queryClient = createTestQueryClient();
 		const chatId = "chat-1";
 		seedAllActiveQueries(queryClient, chatId);
 
-		// interruptChat has no onSuccess handler — the WebSocket
-		// delivers status changes in real-time.
 		const mutation = interruptChat(queryClient, chatId);
-		expect(mutation).not.toHaveProperty("onSuccess");
+		await mutation.onSuccess?.();
+
+		expect(
+			queryClient.getQueryState(chatDebugRunsKey(chatId))?.isInvalidated,
+			"chatDebugRunsKey should be invalidated",
+		).toBe(true);
 
 		for (const { label, key } of unrelatedKeys(chatId)) {
 			const state = queryClient.getQueryState(key);
@@ -1189,19 +1201,46 @@ describe("mutation invalidation scope", () => {
 		}
 	});
 
-	it("promoteChatQueuedMessage does not invalidate unrelated queries", async () => {
+	it("promoteChatQueuedMessage invalidates debug runs without touching unrelated queries", async () => {
 		const queryClient = createTestQueryClient();
 		const chatId = "chat-1";
 		seedAllActiveQueries(queryClient, chatId);
 
 		const mutation = promoteChatQueuedMessage(queryClient, chatId);
-		expect(mutation).not.toHaveProperty("onSuccess");
+		await mutation.onSuccess?.();
+
+		expect(
+			queryClient.getQueryState(chatDebugRunsKey(chatId))?.isInvalidated,
+			"chatDebugRunsKey should be invalidated",
+		).toBe(true);
 
 		for (const { label, key } of unrelatedKeys(chatId)) {
 			const state = queryClient.getQueryState(key);
 			expect(
 				state?.isInvalidated,
 				`${label} should NOT be invalidated by promoteChatQueuedMessage`,
+			).not.toBe(true);
+		}
+	});
+
+	it("regenerateChatTitle invalidates debug runs so the title_generation run surfaces immediately", async () => {
+		const queryClient = createTestQueryClient();
+		const chatId = "chat-1";
+		seedAllActiveQueries(queryClient, chatId);
+
+		const mutation = regenerateChatTitle(queryClient);
+		await mutation.onSettled(undefined, undefined, chatId);
+
+		expect(
+			queryClient.getQueryState(chatDebugRunsKey(chatId))?.isInvalidated,
+			"chatDebugRunsKey should be invalidated",
+		).toBe(true);
+
+		for (const { label, key } of unrelatedKeys(chatId)) {
+			const state = queryClient.getQueryState(key);
+			expect(
+				state?.isInvalidated,
+				`${label} should NOT be invalidated by regenerateChatTitle`,
 			).not.toBe(true);
 		}
 	});

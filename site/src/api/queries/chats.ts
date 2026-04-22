@@ -823,6 +823,7 @@ export const regenerateChatTitle = (queryClient: QueryClient) => ({
 			queryKey: chatKey(chatId),
 			exact: true,
 		});
+		void invalidateChatDebugRuns(queryClient, chatId);
 	},
 });
 
@@ -858,6 +859,15 @@ export const updateChatTitle = (queryClient: QueryClient) => ({
 	},
 });
 
+export const chatDebugRunsKey = (chatId: string) =>
+	["chats", chatId, "debug-runs"] as const;
+
+const invalidateChatDebugRuns = (queryClient: QueryClient, chatId: string) => {
+	return queryClient.invalidateQueries({
+		queryKey: chatDebugRunsKey(chatId),
+	});
+};
+
 export const createChat = (queryClient: QueryClient) => ({
 	mutationFn: (req: TypesGen.CreateChatRequest) =>
 		API.experimental.createChat(req),
@@ -870,14 +880,14 @@ export const createChat = (queryClient: QueryClient) => ({
 });
 
 export const createChatMessage = (
-	_queryClient: QueryClient,
+	queryClient: QueryClient,
 	chatId: string,
 ) => ({
 	mutationFn: (req: CreateChatMessageRequestWithClearablePlanMode) =>
 		API.experimental.createChatMessage(chatId, req),
-	// No onSuccess invalidation needed: the per-chat WebSocket delivers
-	// the response message via upsertDurableMessage, and the global
-	// watchChats() WebSocket updates the sidebar sort order.
+	onSuccess: () => {
+		void invalidateChatDebugRuns(queryClient, chatId);
+	},
 });
 
 type EditChatMessageMutationArgs = {
@@ -961,14 +971,15 @@ export const editChatMessage = (queryClient: QueryClient, chatId: string) => ({
 			queryKey: chatMessagesKey(chatId),
 			exact: true,
 		});
+		void invalidateChatDebugRuns(queryClient, chatId);
 	},
 });
 
-export const interruptChat = (_queryClient: QueryClient, chatId: string) => ({
+export const interruptChat = (queryClient: QueryClient, chatId: string) => ({
 	mutationFn: () => API.experimental.interruptChat(chatId),
-	// No onSuccess invalidation needed: the per-chat WebSocket
-	// delivers the status change via setChatStatus, and the global
-	// watchChats() WebSocket updates the sidebar.
+	onSuccess: () => {
+		void invalidateChatDebugRuns(queryClient, chatId);
+	},
 });
 
 export const deleteChatQueuedMessage = (
@@ -990,14 +1001,14 @@ export const deleteChatQueuedMessage = (
 });
 
 export const promoteChatQueuedMessage = (
-	_queryClient: QueryClient,
+	queryClient: QueryClient,
 	chatId: string,
 ) => ({
 	mutationFn: (queuedMessageId: number) =>
 		API.experimental.promoteChatQueuedMessage(chatId, queuedMessageId),
-	// No onSuccess invalidation needed: the caller upserts the
-	// promoted message from the response, and the per-chat
-	// WebSocket delivers queue and status updates in real-time.
+	onSuccess: () => {
+		void invalidateChatDebugRuns(queryClient, chatId);
+	},
 });
 
 export const chatDiffContentsKey = (chatId: string) =>
@@ -1074,6 +1085,8 @@ export const updateChatDesktopEnabled = (queryClient: QueryClient) => ({
 		});
 	},
 });
+
+export * from "./chatDebugLogging";
 
 const chatWorkspaceTTLKey = ["chat-workspace-ttl"] as const;
 
