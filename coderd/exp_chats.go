@@ -5165,6 +5165,7 @@ func (api *API) createChatProvider(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validateChatProviderCentralAPIKey(
+		provider,
 		centralAPIKeyEnabled,
 		api.hasEffectiveCentralProviderAPIKey(ctx, database.ChatProvider{
 			Provider:             provider,
@@ -5326,6 +5327,7 @@ func (api *API) updateChatProvider(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validateChatProviderCentralAPIKey(
+		existing.Provider,
 		centralAPIKeyEnabled,
 		api.hasEffectiveCentralProviderAPIKey(ctx, database.ChatProvider{
 			ID:                   existing.ID,
@@ -5462,7 +5464,7 @@ func (api *API) listUserChatProviderConfigs(rw http.ResponseWriter, r *http.Requ
 		hasUserAPIKey := hasUserAPIKeyByProviderID[provider.ID]
 		hasCentralAPIKeyFallback := provider.Enabled &&
 			provider.AllowCentralApiKeyFallback &&
-			api.hasEffectiveCentralProviderAPIKey(ctx, provider, uuid.Nil)
+			api.hasEffectiveCentralProviderCredentials(ctx, provider, uuid.Nil)
 		resp = append(
 			resp,
 			convertUserChatProviderConfig(
@@ -5548,7 +5550,7 @@ func (api *API) upsertUserChatProviderKey(rw http.ResponseWriter, r *http.Reques
 
 	hasCentralAPIKeyFallback := provider.Enabled &&
 		provider.AllowCentralApiKeyFallback &&
-		api.hasEffectiveCentralProviderAPIKey(ctx, provider, uuid.Nil)
+		api.hasEffectiveCentralProviderCredentials(ctx, provider, uuid.Nil)
 	httpapi.Write(
 		ctx,
 		rw,
@@ -6395,15 +6397,17 @@ func validateChatProviderCredentialPolicy(
 
 //nolint:revive // This helper validates central-key requirements.
 func validateChatProviderCentralAPIKey(
+	provider string,
 	centralEnabled bool,
 	hasCentralAPIKey bool,
 ) error {
-	if centralEnabled && !hasCentralAPIKey {
-		return xerrors.New(
-			"API key is required when central API key is enabled.",
-		)
+	if !centralEnabled || hasCentralAPIKey {
+		return nil
 	}
-	return nil
+	if chatprovider.ProviderAllowsAmbientCredentials(provider) {
+		return nil
+	}
+	return xerrors.New("API key is required when central API key is enabled.")
 }
 
 // ChatProviderAPIKeysFromDeploymentValues returns deployment-backed chat
@@ -6419,6 +6423,18 @@ func ChatProviderAPIKeysFromDeploymentValues(
 
 func (api *API) hasEffectiveProviderAPIKey(ctx context.Context, provider database.ChatProvider) bool {
 	return api.hasEffectiveCentralProviderAPIKey(ctx, provider, uuid.Nil)
+}
+
+func (api *API) hasEffectiveCentralProviderCredentials(
+	ctx context.Context,
+	provider database.ChatProvider,
+	excludeProviderID uuid.UUID,
+) bool {
+	if api.hasEffectiveCentralProviderAPIKey(ctx, provider, excludeProviderID) {
+		return true
+	}
+	return provider.CentralApiKeyEnabled &&
+		chatprovider.ProviderAllowsAmbientCredentials(provider.Provider)
 }
 
 func (api *API) hasEffectiveCentralProviderAPIKey(
