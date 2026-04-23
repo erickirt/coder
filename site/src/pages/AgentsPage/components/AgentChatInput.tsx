@@ -171,6 +171,26 @@ type ToolBadgeData =
 	| ({ kind: "attached-workspace" } & AttachedWorkspaceInfo)
 	| { kind: "mcp"; server: TypesGen.MCPServerConfig };
 
+// Small `X` button rendered inside pill-style badges (attached
+// workspace, MCP server, planning indicator) to dismiss or disable
+// the badge without opening the `+` menu. Callers pass the action
+// handler and a descriptive aria-label.
+const BadgeDismissButton: FC<{
+	onClick: () => void;
+	ariaLabel: string;
+	isDisabled?: boolean;
+}> = ({ onClick, ariaLabel, isDisabled = false }) => (
+	<button
+		type="button"
+		onClick={onClick}
+		disabled={isDisabled}
+		className="ml-0.5 inline-flex cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0.5 text-content-secondary transition-colors hover:bg-surface-tertiary hover:text-content-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-content-secondary"
+		aria-label={ariaLabel}
+	>
+		<XIcon className="!size-2.5" />
+	</button>
+);
+
 const ToolBadge: FC<{
 	badge: ToolBadgeData;
 	onRemoveWorkspace?: () => void;
@@ -210,14 +230,10 @@ const ToolBadge: FC<{
 				<MonitorIcon className="size-3" />
 				<span className="truncate">{badge.name}</span>
 				{onRemoveWorkspace && (
-					<button
-						type="button"
+					<BadgeDismissButton
 						onClick={onRemoveWorkspace}
-						className="ml-0.5 inline-flex cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0.5 text-content-secondary transition-colors hover:bg-surface-tertiary hover:text-content-primary"
-						aria-label={`Remove workspace ${badge.name}`}
-					>
-						<XIcon className="!size-2.5" />
-					</button>
+						ariaLabel={`Remove workspace ${badge.name}`}
+					/>
 				)}
 			</span>
 		);
@@ -237,14 +253,10 @@ const ToolBadge: FC<{
 			)}
 			{badge.server.display_name}
 			{!isForceOn && onRemoveMcp && (
-				<button
-					type="button"
+				<BadgeDismissButton
 					onClick={() => onRemoveMcp(badge.server.id)}
-					className="ml-0.5 inline-flex cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0.5 text-content-secondary transition-colors hover:bg-surface-tertiary hover:text-content-primary"
-					aria-label={`Remove ${badge.server.display_name}`}
-				>
-					<XIcon className="!size-2.5" />
-				</button>
+					ariaLabel={`Remove ${badge.server.display_name}`}
+				/>
 			)}
 		</span>
 	);
@@ -444,6 +456,8 @@ export const AgentChatInput: FC<AgentChatInputProps> = ({
 		onPlanModeToggle?.(!planModeEnabled);
 		setPlusMenuOpen(false);
 	};
+
+	const handleDisablePlanMode = () => onPlanModeToggle?.(false);
 
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [composerElement, setComposerElement] = useState<HTMLDivElement | null>(
@@ -1065,6 +1079,13 @@ export const AgentChatInput: FC<AgentChatInputProps> = ({
 							<span className="hidden shrink-0 items-center gap-1 rounded-full bg-surface-secondary px-2 py-0.5 text-xs font-medium text-content-secondary md:inline-flex">
 								<PencilIcon className="size-3" />
 								Planning
+								{onPlanModeToggle && (
+									<BadgeDismissButton
+										onClick={handleDisablePlanMode}
+										ariaLabel="Disable plan mode"
+										isDisabled={isDisabled}
+									/>
+								)}
 							</span>
 						)}{" "}
 						{/* Badge row — all badges and the pill always
