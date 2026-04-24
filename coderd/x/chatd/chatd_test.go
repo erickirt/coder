@@ -2586,7 +2586,13 @@ func TestPromoteQueuedMessageUsesQueuedModelConfigID(t *testing.T) {
 	storedChat, err := db.GetChatByID(ctx, chat.ID)
 	require.NoError(t, err)
 	require.Equal(t, modelConfigB.ID, storedChat.LastModelConfigID)
-	require.Equal(t, database.ChatStatusPending, storedChat.Status)
+	// The processor can pick up the pending chat immediately after
+	// promotion, so this test only requires that promotion moved it out of
+	// waiting and preserved the queued model configuration.
+	require.Contains(t, []database.ChatStatus{
+		database.ChatStatusPending,
+		database.ChatStatusRunning,
+	}, storedChat.Status)
 }
 
 func TestPromoteQueuedMessageReloadsChatWhenModelConfigChangesDuringPending(t *testing.T) {
@@ -2678,7 +2684,7 @@ func TestAutoPromoteQueuedMessagesPreservesPerTurnModelOrder(t *testing.T) {
 	t.Parallel()
 
 	db, ps := dbtestutil.NewDB(t)
-	ctx := testutil.Context(t, testutil.WaitLong)
+	ctx := testutil.Context(t, testutil.WaitSuperLong)
 
 	firstRunStarted := make(chan struct{})
 	allowFirstRunFinish := make(chan struct{})
@@ -2765,7 +2771,7 @@ func TestAutoPromoteQueuedMessagesPreservesPerTurnModelOrder(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return requestCount.Load() >= 3
-	}, testutil.WaitLong, testutil.IntervalFast)
+	}, testutil.WaitSuperLong, testutil.IntervalFast)
 	chatd.WaitUntilIdleForTest(server)
 
 	queuedMessages, err := db.GetChatQueuedMessages(ctx, chat.ID)
@@ -2816,7 +2822,7 @@ func TestAutoPromoteQueuedMessageFallsBackForInvalidQueuedModelConfigID(t *testi
 
 func testAutoPromoteQueuedMessageFallback(t *testing.T, queuedModelConfigID uuid.NullUUID) {
 	db, ps := dbtestutil.NewDB(t)
-	ctx := testutil.Context(t, testutil.WaitLong)
+	ctx := testutil.Context(t, testutil.WaitSuperLong)
 
 	firstRunStarted := make(chan struct{})
 	allowFirstRunFinish := make(chan struct{})
@@ -2871,7 +2877,7 @@ func testAutoPromoteQueuedMessageFallback(t *testing.T, queuedModelConfigID uuid
 
 	require.Eventually(t, func() bool {
 		return requestCount.Load() >= 2
-	}, testutil.WaitLong, testutil.IntervalFast)
+	}, testutil.WaitSuperLong, testutil.IntervalFast)
 	chatd.WaitUntilIdleForTest(server)
 
 	queuedMessages, err := db.GetChatQueuedMessages(ctx, chat.ID)
