@@ -2531,13 +2531,18 @@ func (api *API) postChatMessages(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	modelConfigID := uuid.Nil
+	if req.ModelConfigID != nil {
+		modelConfigID = *req.ModelConfigID
+	}
+
 	sendResult, sendErr := api.chatDaemon.SendMessage(
 		ctx,
 		chatd.SendMessageOptions{
 			ChatID:        chatID,
 			CreatedBy:     apiKey.UserID,
 			Content:       contentBlocks,
-			ModelConfigID: req.ModelConfigID,
+			ModelConfigID: modelConfigID,
 			BusyBehavior:  busyBehavior,
 			PlanMode:      sendPlanMode,
 			MCPServerIDs:  req.MCPServerIDs,
@@ -2557,6 +2562,12 @@ func (api *API) postChatMessages(rw http.ResponseWriter, r *http.Request) {
 			httpapi.Write(ctx, rw, http.StatusTooManyRequests, codersdk.Response{
 				Message: "Message queue is full.",
 				Detail:  fmt.Sprintf("Maximum %d messages can be queued.", chatd.MaxQueueSize),
+			})
+			return
+		}
+		if xerrors.Is(sendErr, chatd.ErrInvalidModelConfigID) {
+			httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+				Message: "Invalid model config ID.",
 			})
 			return
 		}

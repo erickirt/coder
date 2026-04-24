@@ -2168,6 +2168,7 @@ export const ChatProviderConfigSources: ChatProviderConfigSource[] = [
 export interface ChatQueuedMessage {
 	readonly id: number;
 	readonly chat_id: string;
+	readonly model_config_id?: string;
 	readonly content: readonly ChatMessagePart[];
 	readonly created_at: string;
 }

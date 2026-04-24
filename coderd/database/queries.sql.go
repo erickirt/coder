@@ -6753,7 +6753,7 @@ func (q *sqlQuerier) GetChatModelConfigsForTelemetry(ctx context.Context) ([]Get
 }
 
 const getChatQueuedMessages = `-- name: GetChatQueuedMessages :many
-SELECT id, chat_id, content, created_at FROM chat_queued_messages
+SELECT id, chat_id, content, created_at, model_config_id FROM chat_queued_messages
 WHERE chat_id = $1
 ORDER BY id ASC
 `
@@ -6772,6 +6772,7 @@ func (q *sqlQuerier) GetChatQueuedMessages(ctx context.Context, chatID uuid.UUID
 			&i.ChatID,
 			&i.Content,
 			&i.CreatedAt,
+			&i.ModelConfigID,
 		); err != nil {
 			return nil, err
 		}
@@ -7642,24 +7643,30 @@ func (q *sqlQuerier) InsertChatMessages(ctx context.Context, arg InsertChatMessa
 }
 
 const insertChatQueuedMessage = `-- name: InsertChatQueuedMessage :one
-INSERT INTO chat_queued_messages (chat_id, content)
-VALUES ($1, $2)
-RETURNING id, chat_id, content, created_at
+INSERT INTO chat_queued_messages (chat_id, content, model_config_id)
+VALUES (
+    $1,
+    $2,
+    $3::uuid
+)
+RETURNING id, chat_id, content, created_at, model_config_id
 `
 
 type InsertChatQueuedMessageParams struct {
-	ChatID  uuid.UUID       `db:"chat_id" json:"chat_id"`
-	Content json.RawMessage `db:"content" json:"content"`
+	ChatID        uuid.UUID       `db:"chat_id" json:"chat_id"`
+	Content       json.RawMessage `db:"content" json:"content"`
+	ModelConfigID uuid.NullUUID   `db:"model_config_id" json:"model_config_id"`
 }
 
 func (q *sqlQuerier) InsertChatQueuedMessage(ctx context.Context, arg InsertChatQueuedMessageParams) (ChatQueuedMessage, error) {
-	row := q.db.QueryRowContext(ctx, insertChatQueuedMessage, arg.ChatID, arg.Content)
+	row := q.db.QueryRowContext(ctx, insertChatQueuedMessage, arg.ChatID, arg.Content, arg.ModelConfigID)
 	var i ChatQueuedMessage
 	err := row.Scan(
 		&i.ID,
 		&i.ChatID,
 		&i.Content,
 		&i.CreatedAt,
+		&i.ModelConfigID,
 	)
 	return i, err
 }
@@ -7884,7 +7891,7 @@ WHERE id = (
     ORDER BY cqm.id ASC
     LIMIT 1
 )
-RETURNING id, chat_id, content, created_at
+RETURNING id, chat_id, content, created_at, model_config_id
 `
 
 func (q *sqlQuerier) PopNextQueuedMessage(ctx context.Context, chatID uuid.UUID) (ChatQueuedMessage, error) {
@@ -7895,6 +7902,7 @@ func (q *sqlQuerier) PopNextQueuedMessage(ctx context.Context, chatID uuid.UUID)
 		&i.ChatID,
 		&i.Content,
 		&i.CreatedAt,
+		&i.ModelConfigID,
 	)
 	return i, err
 }
