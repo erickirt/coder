@@ -1292,6 +1292,14 @@ export interface ChatAgentModelOverrideResponse {
 }
 
 // From codersdk/chats.go
+/**
+ * ChatAutoArchiveDaysResponse contains the current chat auto-archive setting.
+ */
+export interface ChatAutoArchiveDaysResponse {
+	readonly auto_archive_days: number;
+}
+
+// From codersdk/chats.go
 export type ChatBusyBehavior = "interrupt" | "queue";
 
 export const ChatBusyBehaviors: ChatBusyBehavior[] = ["interrupt", "queue"];
@@ -3402,6 +3410,14 @@ export interface DebugProfileOptions {
 	 */
 	readonly Profiles: readonly string[];
 }
+
+// From codersdk/chats.go
+/**
+ * DefaultChatAutoArchiveDays is the default auto-archive window, in
+ * days, applied when no site config row exists. Zero disables
+ * auto-archival.
+ */
+export const DefaultChatAutoArchiveDays = 0;
 
 // From codersdk/chats.go
 /**
@@ -7683,6 +7699,15 @@ export interface UpdateAppearanceConfig {
  */
 export interface UpdateChatAgentModelOverrideRequest {
 	readonly model_config_id: string;
+}
+
+// From codersdk/chats.go
+/**
+ * UpdateChatAutoArchiveDaysRequest is a request to update the chat
+ * auto-archive period.
+ */
+export interface UpdateChatAutoArchiveDaysRequest {
+	readonly auto_archive_days: number;
 }
 
 // From codersdk/chats.go
