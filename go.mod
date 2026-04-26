@@ -89,10 +89,10 @@ replace github.com/spf13/afero => github.com/aslilac/afero v0.0.0-20250403163713
 // See: https://github.com/coder/fantasy/commits/f83367a4a205
 replace charm.land/fantasy => github.com/coder/fantasy v0.0.0-20260426185602-951a49c681df
 
-// coder/coder uses a fork of charmbracelet's fork of the Anthropic Go SDK with some
-// additional performance improvements.
-// See: https://github.com/coder/anthropic-sdk-go/commits/a31d7d0e7067
-replace github.com/charmbracelet/anthropic-sdk-go => github.com/coder/anthropic-sdk-go v0.0.0-20260415160422-a31d7d0e7067
+// coder/coder uses a fork of charmbracelet's fork of the Anthropic Go SDK
+// with performance improvements and Bedrock header cleanup.
+// See: https://github.com/coder/anthropic-sdk-go/commits/3be8e193ec89
+replace github.com/charmbracelet/anthropic-sdk-go => github.com/coder/anthropic-sdk-go v0.0.0-20260424230212-3be8e193ec89
 
 // Replace sdks with our own optimized forks until relevant upstream PRs are merged.
 // https://github.com/anthropics/anthropic-sdk-go/pull/262
