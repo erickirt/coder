@@ -4557,17 +4557,26 @@ CreateWorkspaceRequest provides options for creating a new workspace. Only one o
         "value": "string"
       }
     }
+  ],
+  "secret_requirements": [
+    {
+      "env": "string",
+      "file": "string",
+      "help_message": "string",
+      "satisfied": true
+    }
   ]
 }
 ```
 
 ### Properties
 
-| Name          | Type                                                                | Required | Restrictions | Description |
-|---------------|---------------------------------------------------------------------|----------|--------------|-------------|
-| `diagnostics` | array of [codersdk.FriendlyDiagnostic](#codersdkfriendlydiagnostic) | false    |              |             |
-| `id`          | integer                                                             | false    |              |             |
-| `parameters`  | array of [codersdk.PreviewParameter](#codersdkpreviewparameter)     | false    |              |             |
+| Name                  | Type                                                                          | Required | Restrictions | Description |
+|-----------------------|-------------------------------------------------------------------------------|----------|--------------|-------------|
+| `diagnostics`         | array of [codersdk.FriendlyDiagnostic](#codersdkfriendlydiagnostic)           | false    |              |             |
+| `id`                  | integer                                                                       | false    |              |             |
+| `parameters`          | array of [codersdk.PreviewParameter](#codersdkpreviewparameter)               | false    |              |             |
+| `secret_requirements` | array of [codersdk.SecretRequirementStatus](#codersdksecretrequirementstatus) | false    |              |             |
 
 ## codersdk.Entitlement
 
@@ -8884,6 +8893,26 @@ Only certain features set these fields: - FeatureManagedAgentLimit|
 | `hostname_suffix`    | string | false    |              | Hostname suffix is the suffix to append to workspace names for SSH hostnames.                                         |
 | `ssh_config_options` | object | false    |              |                                                                                                                       |
 | » `[any property]`   | string | false    |              |                                                                                                                       |
+
+## codersdk.SecretRequirementStatus
+
+```json
+{
+  "env": "string",
+  "file": "string",
+  "help_message": "string",
+  "satisfied": true
+}
+```
+
+### Properties
+
+| Name           | Type    | Required | Restrictions | Description |
+|----------------|---------|----------|--------------|-------------|
+| `env`          | string  | false    |              |             |
+| `file`         | string  | false    |              |             |
+| `help_message` | string  | false    |              |             |
+| `satisfied`    | boolean | false    |              |             |
 
 ## codersdk.ServerSentEvent
 
