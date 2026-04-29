@@ -19777,7 +19777,8 @@ const docTemplate = `{
                 "workspace_app",
                 "task",
                 "ai_seat",
-                "chat"
+                "chat",
+                "user_secret"
             ],
             "x-enum-varnames": [
                 "ResourceTypeTemplate",
@@ -19807,7 +19808,8 @@ const docTemplate = `{
                 "ResourceTypeWorkspaceApp",
                 "ResourceTypeTask",
                 "ResourceTypeAISeat",
-                "ResourceTypeChat"
+                "ResourceTypeChat",
+                "ResourceTypeUserSecret"
             ]
         },
         "codersdk.Response": {
