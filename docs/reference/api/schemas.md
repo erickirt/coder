@@ -468,6 +468,7 @@
       "bedrock_model": "string",
       "bedrock_region": "string",
       "bedrock_small_fast_model": "string",
+      "dump_dir": "string",
       "name": "string",
       "type": "string"
     }
@@ -760,6 +761,7 @@
   "bedrock_model": "string",
   "bedrock_region": "string",
   "bedrock_small_fast_model": "string",
+  "dump_dir": "string",
   "name": "string",
   "type": "string"
 }
@@ -773,6 +775,7 @@
 | `bedrock_model`            | string | false    |              |                                                                                            |
 | `bedrock_region`           | string | false    |              |                                                                                            |
 | `bedrock_small_fast_model` | string | false    |              |                                                                                            |
+| `dump_dir`                 | string | false    |              | Dump dir is the directory path for dumping API requests and responses.                     |
 | `name`                     | string | false    |              | Name is the unique instance identifier used for routing. Defaults to Type if not provided. |
 | `type`                     | string | false    |              | Type is the provider type: "openai", "anthropic", or "copilot".                            |
 
@@ -1287,6 +1290,7 @@
         "bedrock_model": "string",
         "bedrock_region": "string",
         "bedrock_small_fast_model": "string",
+        "dump_dir": "string",
         "name": "string",
         "type": "string"
       }
@@ -3326,6 +3330,7 @@ CreateWorkspaceRequest provides options for creating a new workspace. Only one o
             "bedrock_model": "string",
             "bedrock_region": "string",
             "bedrock_small_fast_model": "string",
+            "dump_dir": "string",
             "name": "string",
             "type": "string"
           }
@@ -3916,6 +3921,7 @@ CreateWorkspaceRequest provides options for creating a new workspace. Only one o
           "bedrock_model": "string",
           "bedrock_region": "string",
           "bedrock_small_fast_model": "string",
+          "dump_dir": "string",
           "name": "string",
           "type": "string"
         }
