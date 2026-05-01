@@ -257,8 +257,8 @@ importers:
         specifier: 9.0.1
         version: 9.0.1
       websocket-ts:
-        specifier: 2.2.1
-        version: 2.2.1
+        specifier: 2.3.0
+        version: 2.3.0
       yup:
         specifier: 1.7.1
         version: 1.7.1
@@ -6304,8 +6304,8 @@ packages:
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==, tarball: https://registry.npmjs.org/webpack-virtual-modules/-/webpack-virtual-modules-0.6.2.tgz}
 
-  websocket-ts@2.2.1:
-    resolution: {integrity: sha512-YKPDfxlK5qOheLZ2bTIiktZO1bpfGdNCPJmTEaPW7G9UXI1GKjDdeacOrsULUS000OPNxDVOyAuKLuIWPqWM0Q==, tarball: https://registry.npmjs.org/websocket-ts/-/websocket-ts-2.2.1.tgz}
+  websocket-ts@2.3.0:
+    resolution: {integrity: sha512-DocKMdXx7i8TCBMU+XUKZeUaKwQ7O2NPlxUcgb0poG4RwDrIqBo19mRdW00a1Sm7MSijhIEsgv9UJ0kB/qNy+Q==, tarball: https://registry.npmjs.org/websocket-ts/-/websocket-ts-2.3.0.tgz}
 
   whatwg-encoding@3.1.1:
     resolution: {integrity: sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ==, tarball: https://registry.npmjs.org/whatwg-encoding/-/whatwg-encoding-3.1.1.tgz}
@@ -12856,7 +12856,7 @@ snapshots:
 
   webpack-virtual-modules@0.6.2: {}
 
-  websocket-ts@2.2.1: {}
+  websocket-ts@2.3.0: {}
 
   whatwg-encoding@3.1.1:
     dependencies:
