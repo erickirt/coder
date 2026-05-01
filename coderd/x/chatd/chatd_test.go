@@ -321,7 +321,7 @@ func TestSubagentChatExcludesWorkspaceProvisioningTools(t *testing.T) {
 	// Identify root and subagent calls. Root chat calls include
 	// spawn_agent; the subagent call does not. Because the root chat
 	// makes multiple LLM calls (before and after spawn_agent), we
-	// find exactly one call that lacks spawn_agent — that's the
+	// find exactly one call that lacks spawn_agent. That's the
 	// subagent.
 	var rootCalls, childCalls [][]string
 	for _, tools := range recorded {
@@ -3689,7 +3689,7 @@ func TestNewReplicaRecoversStaleChatFromDeadReplica(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Start a new replica — it should recover the stale chat on
+	// Start a new replica. It should recover the stale chat on
 	// startup.
 	newReplica := newTestServer(t, db, ps, uuid.New())
 	_ = newReplica
@@ -3712,7 +3712,7 @@ func TestWaitingChatsAreNotRecoveredAsStale(t *testing.T) {
 	ctx := testutil.Context(t, testutil.WaitLong)
 	user, org, model := seedChatDependencies(t, db)
 
-	// Create a chat in waiting status — this should NOT be touched
+	// Create a chat in waiting status. This should NOT be touched
 	// by stale recovery.
 	chat := dbgen.Chat(t, db, database.Chat{
 		OrganizationID:    org.ID,
@@ -4021,7 +4021,7 @@ func TestDynamicToolCallPausesAndResumes(t *testing.T) {
 	streamedCalls := make([]chattest.OpenAIRequest, 0, 2)
 
 	openAIURL := chattest.NewOpenAI(t, func(req *chattest.OpenAIRequest) chattest.OpenAIResponse {
-		// Non-streaming requests are title generation — return a
+		// Non-streaming requests are title generation. Return a
 		// simple title.
 		if !req.Stream {
 			return chattest.OpenAINonStreamingResponse("Dynamic tool test")
@@ -4055,7 +4055,7 @@ func TestDynamicToolCallPausesAndResumes(t *testing.T) {
 
 	// Dynamic tools do not need a workspace connection, but the
 	// chatd server always builds workspace tools. Use an active
-	// server without an agent connection — the built-in tools
+	// server without an agent connection, so the built-in tools
 	// are never invoked because the only tool call targets our
 	// dynamic tool.
 	server := newActiveTestServer(t, db, ps)
@@ -4309,7 +4309,7 @@ func TestDynamicToolCallMixedWithBuiltIn(t *testing.T) {
 
 		if streamedCallCount.Add(1) == 1 {
 			// First call: return TWO tool calls in one
-			// response — a built-in tool (read_file) and a
+			// response: a built-in tool (read_file) and a
 			// dynamic tool (my_dynamic_tool).
 			builtinChunk := chattest.OpenAIToolCallChunk(
 				"read_file",
@@ -4648,7 +4648,7 @@ func TestSubscribeNoPubsubNoDuplicateMessageParts(t *testing.T) {
 	require.NotEmpty(t, snapshot)
 
 	// The events channel should NOT immediately produce any
-	// events — the snapshot already contained everything. Before
+	// events. The snapshot already contained everything. Before
 	// the fix, localSnapshot was replayed into the channel,
 	// causing duplicates.
 	require.Never(t, func() bool {
@@ -4671,7 +4671,7 @@ func TestSubscribeAfterMessageID(t *testing.T) {
 	ctx := testutil.Context(t, testutil.WaitLong)
 	user, org, model := seedChatDependencies(t, db)
 
-	// Create a chat — this inserts one initial "user" message.
+	// Create a chat. This inserts one initial "user" message.
 	chat, err := replica.CreateChat(ctx, chatd.CreateOptions{
 		OrganizationID:     org.ID,
 		OwnerID:            user.ID,
@@ -4938,7 +4938,7 @@ func TestStartWorkspaceTool_EndToEnd(t *testing.T) {
 
 	// Create a workspace, then stop it so start_workspace has
 	// something to start. We intentionally skip starting a test
-	// agent — the echo provisioner creates new agent rows for each
+	// agent. The echo provisioner creates new agent rows for each
 	// build, so an agent started for build 1 cannot serve build 3.
 	// The tool handles the no-agent case gracefully.
 	workspace := coderdtest.CreateWorkspace(t, client, template.ID)
@@ -5299,7 +5299,7 @@ func TestHeartbeatBumpsWorkspaceUsage(t *testing.T) {
 			Time:  dbtime.Now().Add(-30 * time.Minute),
 		},
 	})
-	// Build deadline is 30 minutes in the past — close enough to
+	// Build deadline is 30 minutes in the past, close enough to
 	// be bumped by the default 1-hour activity bump.
 	build := dbgen.WorkspaceBuild(t, db, database.WorkspaceBuild{
 		WorkspaceID:       ws.ID,
@@ -5406,7 +5406,7 @@ func TestHeartbeatBumpsWorkspaceUsage(t *testing.T) {
 		"workspace last_used_at should have been bumped")
 
 	// Verify the workspace build deadline was also extended.
-	// The SQL only writes when 5% of the deadline has elapsed —
+	// The SQL only writes when 5% of the deadline has elapsed,
 	// most calls perform a read-only CTE lookup. Wider ±2
 	// minute tolerance than activitybump_test.go because the bump
 	// happens asynchronously via the heartbeat goroutine.
@@ -5518,7 +5518,7 @@ func waitForChatProcessed(
 		if err != nil {
 			return false
 		}
-		// Wait until the chat reaches a terminal state — neither
+		// Wait until the chat reaches a terminal state. Neither
 		// pending (waiting to be acquired) nor running (being
 		// processed). This guarantees that inflight.Add(1) has
 		// already been called by processOnce.
@@ -6832,7 +6832,7 @@ func TestInterruptChatPersistsPartialResponse(t *testing.T) {
 	require.NoError(t, err)
 
 	// Subscribe to the chat's event stream so we can observe
-	// message_part events — proof the chatloop has actually
+	// message_part events. This proves the chatloop has actually
 	// processed the streamed chunks.
 	_, events, subCancel, ok := server.Subscribe(ctx, chat.ID, nil, 0)
 	require.True(t, ok)
@@ -6866,7 +6866,7 @@ func TestInterruptChatPersistsPartialResponse(t *testing.T) {
 	}, testutil.IntervalFast)
 	require.True(t, gotMessagePart, "should have received at least one message_part event")
 
-	// Now interrupt the chat — the chatloop has processed content.
+	// Now interrupt the chat. The chatloop has processed content.
 	updated := server.InterruptChat(ctx, chat)
 	require.Equal(t, database.ChatStatusWaiting, updated.Status)
 
@@ -7808,7 +7808,7 @@ func TestMCPServerOAuth2TokenRefreshFailureGraceful(t *testing.T) {
 	}))
 	t.Cleanup(tokenSrv.Close)
 
-	// The LLM just replies with text — no tool calls.
+	// The LLM just replies with text, no tool calls.
 	var callCount atomic.Int32
 	openAIURL := chattest.NewOpenAI(t, func(req *chattest.OpenAIRequest) chattest.OpenAIResponse {
 		if !req.Stream {
@@ -7898,9 +7898,9 @@ func TestChatTemplateAllowlistEnforcement(t *testing.T) {
 
 	// Set up a mock OpenAI server that chains tool calls:
 	//  1. list_templates
-	//  2. read_template  (blocked template — should fail)
-	//  3. read_template  (allowed template — should succeed)
-	//  4. create_workspace (blocked template — should fail)
+	//  2. read_template  (blocked template, should fail)
+	//  3. read_template  (allowed template, should succeed)
+	//  4. create_workspace (blocked template, should fail)
 	//  5. text response
 	var callCount atomic.Int32
 	openAIURL := chattest.NewOpenAI(t, func(req *chattest.OpenAIRequest) chattest.OpenAIResponse {
@@ -8048,7 +8048,7 @@ func TestChatTemplateAllowlistEnforcement(t *testing.T) {
 // TestSignalWakeImmediateAcquisition verifies that CreateChat triggers
 // immediate processing via signalWake without waiting for the polling
 // ticker to fire. The ticker interval is set to an hour so it never
-// fires during the test — any processing must come from the wake
+// fires during the test. Any processing must come from the wake
 // channel.
 func TestSignalWakeImmediateAcquisition(t *testing.T) {
 	t.Parallel()
@@ -8061,7 +8061,7 @@ func TestSignalWakeImmediateAcquisition(t *testing.T) {
 		if !req.Stream {
 			return chattest.OpenAINonStreamingResponse("title")
 		}
-		// Signal that the LLM was reached — this proves the chat
+		// Signal that the LLM was reached. This proves the chat
 		// was acquired and processing started.
 		select {
 		case <-processed:
@@ -8092,7 +8092,7 @@ func TestSignalWakeImmediateAcquisition(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// The chat should be processed immediately — the LLM handler
+	// The chat should be processed immediately. The LLM handler
 	// closes the `processed` channel when it receives a streaming
 	// request. Without signalWake this would hang forever because
 	// the 1-hour ticker never fires.
@@ -8161,7 +8161,7 @@ func TestSignalWakeSendMessage(t *testing.T) {
 	testutil.TryReceive(ctx, t, firstProcessed)
 	chatd.WaitUntilIdleForTest(server)
 
-	// Now send a follow-up message — this should also be
+	// Now send a follow-up message, which should also be
 	// processed immediately via signalWake.
 	_, err = server.SendMessage(ctx, chatd.SendMessageOptions{
 		ChatID:  chat.ID,
@@ -8172,7 +8172,7 @@ func TestSignalWakeSendMessage(t *testing.T) {
 	testutil.TryReceive(ctx, t, secondProcessed)
 	chatd.WaitUntilIdleForTest(server)
 
-	// Both turns processed — verify second request reached the LLM.
+	// Both turns processed. Verify the second request reached the LLM.
 	require.GreaterOrEqual(t, requestCount.Load(), int32(2),
 		"LLM should have received at least 2 streaming requests")
 }
