@@ -975,6 +975,10 @@ type chatStreamState struct {
 	bufferLastWarnAt     time.Time
 	subscriberDropCount  int64
 	subscriberLastWarnAt time.Time
+	// currentRetry records the current retry phase for late-joining
+	// same-replica subscribers. Nil when the stream is not waiting
+	// to retry.
+	currentRetry *codersdk.ChatStreamRetry
 	// bufferRetainedAt records when processing completed and
 	// the buffer was retained for late-connecting relay
 	// subscribers. Zero while buffering is active. When
@@ -4099,9 +4103,41 @@ func (p *Server) processOnce(ctx context.Context) {
 	p.inflightMu.Unlock()
 }
 
+func shouldClearRetryPhaseForStatus(status codersdk.ChatStatus) bool {
+	switch status {
+	case codersdk.ChatStatusWaiting,
+		codersdk.ChatStatusPending,
+		codersdk.ChatStatusPaused,
+		codersdk.ChatStatusCompleted,
+		codersdk.ChatStatusError,
+		codersdk.ChatStatusRequiresAction:
+		return true
+	default:
+		return false
+	}
+}
+
 func (p *Server) publishToStream(chatID uuid.UUID, event codersdk.ChatStreamEvent) {
 	state := p.getOrCreateStreamState(chatID)
 	state.mu.Lock()
+	switch event.Type {
+	case codersdk.ChatStreamEventTypeRetry:
+		if event.Retry != nil {
+			retryCopy := *event.Retry
+			state.currentRetry = &retryCopy
+		}
+	case codersdk.ChatStreamEventTypeMessagePart:
+		// Any streamed part means the provider is making forward
+		// progress again, so the stream has left the retry backoff
+		// window regardless of role.
+		state.currentRetry = nil
+	case codersdk.ChatStreamEventTypeError:
+		state.currentRetry = nil
+	case codersdk.ChatStreamEventTypeStatus:
+		if event.Status != nil && shouldClearRetryPhaseForStatus(event.Status.Status) {
+			state.currentRetry = nil
+		}
+	}
 	if event.Type == codersdk.ChatStreamEventTypeMessagePart {
 		if !state.buffering {
 			p.cleanupStreamIfIdle(chatID, state)
@@ -4212,12 +4248,18 @@ func (p *Server) getCachedDurableMessages(
 
 func (p *Server) subscribeToStream(chatID uuid.UUID) (
 	[]codersdk.ChatStreamEvent,
+	*codersdk.ChatStreamRetry,
 	<-chan codersdk.ChatStreamEvent,
 	func(),
 ) {
 	state := p.getOrCreateStreamState(chatID)
 	state.mu.Lock()
 	snapshot := append([]codersdk.ChatStreamEvent(nil), state.buffer...)
+	var currentRetry *codersdk.ChatStreamRetry
+	if state.currentRetry != nil {
+		retryCopy := *state.currentRetry
+		currentRetry = &retryCopy
+	}
 	id := uuid.New()
 	ch := make(chan codersdk.ChatStreamEvent, 128)
 	state.subscribers[id] = ch
@@ -4235,7 +4277,7 @@ func (p *Server) subscribeToStream(chatID uuid.UUID) (
 		state.mu.Unlock()
 	}
 
-	return snapshot, ch, cancel
+	return snapshot, currentRetry, ch, cancel
 }
 
 // getOrCreateStreamState returns the per-chat stream state,
@@ -4456,8 +4498,10 @@ func (p *Server) Subscribe(
 	}
 
 	// Subscribe to the local stream for message_parts and same-replica
-	// persisted messages.
-	localSnapshot, localParts, localCancel := p.subscribeToStream(chatID)
+	// persisted messages. Capture the current retry phase under the same
+	// lock so the transient snapshot and subscriber registration reflect
+	// a single moment in time.
+	localSnapshot, localRetry, localParts, localCancel := p.subscribeToStream(chatID)
 
 	// Merge all event sources.
 	mergedCtx, mergedCancel := context.WithCancel(ctx)
@@ -4521,10 +4565,21 @@ func (p *Server) Subscribe(
 	// is already active so no notifications can be lost during this
 	// window.
 	initialSnapshot := make([]codersdk.ChatStreamEvent, 0)
-	// Add local message_parts to snapshot
+	// Add local same-replica message_parts to the snapshot. Retry comes
+	// from state.currentRetry, not the event buffer, so late joiners see
+	// only the latest phase rather than a stale buffered retry event.
 	for _, event := range localSnapshot {
 		if event.Type == codersdk.ChatStreamEventTypeMessagePart {
 			initialSnapshot = append(initialSnapshot, event)
+		}
+	}
+
+	var retryEvent *codersdk.ChatStreamEvent
+	if localRetry != nil {
+		retryEvent = &codersdk.ChatStreamEvent{
+			Type:   codersdk.ChatStreamEventTypeRetry,
+			ChatID: chatID,
+			Retry:  localRetry,
 		}
 	}
 
@@ -4602,9 +4657,18 @@ func (p *Server) Subscribe(
 				Status: codersdk.ChatStatus(chat.Status),
 			},
 		}
-		// Prepend so the frontend sees the status before any
-		// message_part events.
-		initialSnapshot = append([]codersdk.ChatStreamEvent{statusEvent}, initialSnapshot...)
+		// Prepend so the frontend sees the current stream phases
+		// before any message_part events.
+		prefix := []codersdk.ChatStreamEvent{statusEvent}
+		if retryEvent != nil {
+			prefix = append(prefix, *retryEvent)
+			retryEvent = nil
+		}
+		initialSnapshot = append(prefix, initialSnapshot...)
+	}
+
+	if retryEvent != nil {
+		initialSnapshot = append(initialSnapshot, *retryEvent)
 	}
 
 	// Track the highest durable message ID delivered to this subscriber,
@@ -5476,6 +5540,9 @@ func (p *Server) processChat(ctx context.Context, chat database.Chat) {
 	streamState.mu.Unlock()
 	defer func() {
 		streamState.mu.Lock()
+		// Fallback cleanup for exit paths that return before a
+		// terminal stream event is published.
+		streamState.currentRetry = nil
 		streamState.resetDropCounters()
 		streamState.buffering = false
 		// Retain the buffer for a grace period so
