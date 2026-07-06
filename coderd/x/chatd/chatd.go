@@ -2928,7 +2928,6 @@ func recordManualTitleUsage(
 				Compressed:          []bool{false},
 				TotalCostMicros:     []int64{ptr.NilToDefault(totalCostMicros, 0)},
 				RuntimeMs:           []int64{0},
-				ProviderResponseID:  []string{""},
 			})
 			if err != nil {
 				return xerrors.Errorf("insert manual title usage message: %w", err)
@@ -2982,7 +2981,6 @@ type chatMessage struct {
 	contextLimit        int64
 	totalCostMicros     int64
 	runtimeMs           int64
-	providerResponseID  string
 }
 
 type userChatMessage struct {
@@ -3057,7 +3055,6 @@ func appendMessageFields(
 	params.Compressed = append(params.Compressed, msg.compressed)
 	params.TotalCostMicros = append(params.TotalCostMicros, msg.totalCostMicros)
 	params.RuntimeMs = append(params.RuntimeMs, msg.runtimeMs)
-	params.ProviderResponseID = append(params.ProviderResponseID, msg.providerResponseID)
 }
 
 func appendChatMessage(params *database.InsertChatMessagesParams, msg chatMessage) {
@@ -3786,9 +3783,9 @@ func mergeTurnSkills(
 	)
 }
 
-// buildSystemPrompt applies system-level prompt injections in the
-// canonical order. It is used by both the initial prompt assembly
-// and the ReloadMessages callback to keep them in sync.
+// buildSystemPrompt applies system-level prompt injections in a fixed
+// order: subagent instruction, chat instruction, skill index, user prompt,
+// then mode overlay prompts.
 func buildSystemPrompt(
 	prompt []fantasy.Message,
 	subagentInstruction string,
