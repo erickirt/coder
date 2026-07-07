@@ -55,6 +55,7 @@
 ```json
 {
   "access_token": "string",
+  "expires_at": "string",
   "password": "string",
   "token_extra": {},
   "type": "string",
@@ -65,14 +66,15 @@
 
 ### Properties
 
-| Name           | Type   | Required | Restrictions | Description                                                                              |
-|----------------|--------|----------|--------------|------------------------------------------------------------------------------------------|
-| `access_token` | string | false    |              |                                                                                          |
-| `password`     | string | false    |              |                                                                                          |
-| `token_extra`  | object | false    |              |                                                                                          |
-| `type`         | string | false    |              |                                                                                          |
-| `url`          | string | false    |              |                                                                                          |
-| `username`     | string | false    |              | Deprecated: Only supported on `/workspaceagents/me/gitauth` for backwards compatibility. |
+| Name           | Type   | Required | Restrictions | Description                                                                                                                    |
+|----------------|--------|----------|--------------|--------------------------------------------------------------------------------------------------------------------------------|
+| `access_token` | string | false    |              |                                                                                                                                |
+| `expires_at`   | string | false    |              | Expires at is the time the token expires, normalized to UTC (for example, "2024-06-01T15:04:05Z"). Zero value means no expiry. |
+| `password`     | string | false    |              |                                                                                                                                |
+| `token_extra`  | object | false    |              |                                                                                                                                |
+| `type`         | string | false    |              |                                                                                                                                |
+| `url`          | string | false    |              |                                                                                                                                |
+| `username`     | string | false    |              | Deprecated: Only supported on `/workspaceagents/me/gitauth` for backwards compatibility.                                       |
 
 ## agentsdk.GitSSHKey
 
