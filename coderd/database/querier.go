@@ -417,6 +417,10 @@ type sqlcQuerier interface {
 	// query does not walk up from a child.
 	GetChatFamilyIDsByRootID(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error)
 	GetChatFileByID(ctx context.Context, id uuid.UUID) (ChatFile, error)
+	// GetChatFileDataPrefixesByIDs returns a bounded prefix of each
+	// file's content, keeping full blobs out of server memory. Owner and
+	// organization columns support row-level authorization.
+	GetChatFileDataPrefixesByIDs(ctx context.Context, arg GetChatFileDataPrefixesByIDsParams) ([]GetChatFileDataPrefixesByIDsRow, error)
 	// GetChatFileMetadataByChatID returns lightweight file metadata for
 	// all files linked to a chat. The data column is excluded to avoid
 	// loading file content.
