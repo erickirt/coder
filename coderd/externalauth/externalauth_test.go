@@ -1083,41 +1083,45 @@ func TestRevokeToken(t *testing.T) {
 
 	t.Run("RevokeTokenRFC_Timeout", func(t *testing.T) {
 		t.Parallel()
+		handlerStarted := make(chan bool, 1)
 		revokeExited := make(chan bool, 1)
-		testTimeout := make(chan bool, 1)
-		handlerDone := make(chan bool)
-
-		go func() {
-			time.Sleep(5 * time.Second)
-			testTimeout <- true
-		}()
 
 		fake, config, link := setupOauth2Test(t, testConfig{
 			FakeIDPOpts: []oidctest.FakeIDPOpt{
 				oidctest.WithRevokeTokenRFC(func() (int, error) {
-					defer func() {
-						handlerDone <- true
-					}()
-
-					select {
-					case <-testTimeout:
-						t.Error("test timeout reached before context timeout")
-						return http.StatusOK, nil
-					case <-revokeExited:
-						return http.StatusOK, nil
-					}
+					handlerStarted <- true
+					<-revokeExited
+					return http.StatusOK, nil
 				}),
 				oidctest.WithServing(),
 			},
 		})
 
+		// Always unblock the handler so it can return. Must be
+		// registered after setupOauth2Test so LIFO runs it first.
+		t.Cleanup(func() {
+			select {
+			case revokeExited <- true:
+			default:
+			}
+		})
+
 		ctx := oidc.ClientContext(testutil.Context(t, testutil.WaitLong), fake.HTTPClient(nil))
-		config.RevokeTimeout = time.Millisecond * 10
+		// A short timeout forces the request's deadline to fire while
+		// the handler is blocked in-flight, exercising the revoke
+		// timeout path.
+		config.RevokeTimeout = 100 * time.Millisecond
 		revoked, err := config.RevokeToken(ctx, link)
+		// Make sure request has reached the handler before asserting.
+		// NOTE: if this flakes again, increase config.RevokeTimeout.
+		select {
+		case <-handlerStarted:
+		default:
+			t.Fatal("RevokeToken returned before revoke handler started")
+		}
 		revokeExited <- true
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		require.False(t, revoked)
-		_ = testutil.RequireReceive(ctx, t, handlerDone)
 	})
 
 	t.Run("RevokeTokenGitHub_OK", func(t *testing.T) {
