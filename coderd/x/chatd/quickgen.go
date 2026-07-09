@@ -2,6 +2,7 @@ package chatd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -86,10 +87,11 @@ var preferredTitleModels = []struct {
 }
 
 type shortTextCandidate struct {
-	provider string
-	model    string
-	route    aiGatewayModelRoute
-	lm       fantasy.LanguageModel
+	provider        string
+	model           string
+	route           aiGatewayModelRoute
+	lm              fantasy.LanguageModel
+	providerOptions fantasy.ProviderOptions
 }
 
 func selectPreferredConfiguredShortTextModelConfig(
@@ -185,7 +187,7 @@ func (p *Server) GenerateChatTitleAsync(ctx context.Context, chat database.Chat)
 			messages,
 			pasteText,
 			string(route.Provider.Type),
-			modelConfig.Model,
+			modelConfig,
 			model,
 			route,
 			modelOpts,
@@ -216,7 +218,7 @@ func (p *Server) maybeGenerateChatTitle(
 	messages []database.ChatMessage,
 	pasteText map[uuid.UUID]string,
 	fallbackProvider string,
-	fallbackModelName string,
+	fallbackConfig database.ChatModelConfig,
 	fallbackModel fantasy.LanguageModel,
 	fallbackRoute aiGatewayModelRoute,
 	modelOpts modelBuildOptions,
@@ -257,17 +259,19 @@ func (p *Server) maybeGenerateChatTitle(
 	var candidate shortTextCandidate
 	if overrideSet {
 		candidate = shortTextCandidate{
-			provider: string(overrideRoute.Provider.Type),
-			model:    overrideConfig.Model,
-			route:    overrideRoute,
-			lm:       overrideModel,
+			provider:        string(overrideRoute.Provider.Type),
+			model:           overrideConfig.Model,
+			route:           overrideRoute,
+			lm:              overrideModel,
+			providerOptions: p.titleGenerationProviderOptions(ctx, overrideModel, overrideConfig),
 		}
 	} else {
 		candidate = shortTextCandidate{
-			provider: fallbackProvider,
-			model:    fallbackModelName,
-			route:    fallbackRoute,
-			lm:       fallbackModel,
+			provider:        fallbackProvider,
+			model:           fallbackConfig.Model,
+			route:           fallbackRoute,
+			lm:              fallbackModel,
+			providerOptions: p.titleGenerationProviderOptions(ctx, fallbackModel, fallbackConfig),
 		}
 	}
 
@@ -309,7 +313,7 @@ func (p *Server) maybeGenerateChatTitle(
 		)
 	}
 
-	title, err := generateTitle(candidateCtx, candidateModel, input)
+	title, err := generateTitle(candidateCtx, candidateModel, candidate.providerOptions, input)
 	finishDebugRun(err)
 	if err != nil {
 		if overrideSet {
@@ -346,6 +350,28 @@ func (p *Server) maybeGenerateChatTitle(
 	chat.Title = title
 	generatedTitle.Store(title)
 	p.publishChatPubsubEvent(chat, codersdk.ChatWatchEventKindTitleChange, nil)
+}
+
+func (p *Server) titleGenerationProviderOptions(
+	ctx context.Context,
+	model fantasy.LanguageModel,
+	config database.ChatModelConfig,
+) fantasy.ProviderOptions {
+	callConfig := codersdk.ChatModelCallConfig{}
+	if len(config.Options) > 0 {
+		if err := json.Unmarshal(config.Options, &callConfig); err != nil {
+			p.logger.Debug(ctx, "failed to parse title generation model call config",
+				slog.F("model_config_id", config.ID),
+				slog.Error(err),
+			)
+		}
+	}
+	providerOptions := chatprovider.ProviderOptionsFromChatModelConfig(model, callConfig.ProviderOptions)
+	return chatprovider.ApplyReasoningEffort(
+		model,
+		providerOptions,
+		chatprovider.ResolveReasoningEffort(nil, callConfig.ReasoningEffort),
+	)
 }
 
 func (p *Server) newQuickgenDebugModel(
@@ -471,9 +497,10 @@ func (p *Server) prepareQuickgenDebugCandidate(
 func generateTitle(
 	ctx context.Context,
 	model fantasy.LanguageModel,
+	providerOptions fantasy.ProviderOptions,
 	input string,
 ) (string, error) {
-	title, err := generateStructuredTitle(ctx, model, titleGenerationPrompt, input)
+	title, err := generateStructuredTitle(ctx, model, providerOptions, titleGenerationPrompt, input)
 	if err != nil {
 		return "", err
 	}
@@ -483,12 +510,14 @@ func generateTitle(
 func generateStructuredTitle(
 	ctx context.Context,
 	model fantasy.LanguageModel,
+	providerOptions fantasy.ProviderOptions,
 	systemPrompt string,
 	userInput string,
 ) (string, error) {
 	title, _, err := generateStructuredTitleWithUsage(
 		ctx,
 		model,
+		providerOptions,
 		systemPrompt,
 		userInput,
 	)
@@ -501,6 +530,7 @@ func generateStructuredTitle(
 func generateStructuredTitleWithUsage(
 	ctx context.Context,
 	model fantasy.LanguageModel,
+	providerOptions fantasy.ProviderOptions,
 	systemPrompt string,
 	userInput string,
 ) (string, fantasy.Usage, error) {
@@ -534,6 +564,7 @@ func generateStructuredTitleWithUsage(
 			SchemaDescription: "Propose a short chat title.",
 			MaxOutputTokens:   &maxOutputTokens,
 			Temperature:       ptr.Ref(quickgenTemperature),
+			ProviderOptions:   providerOptions,
 		})
 		return genErr
 	}, nil)
@@ -844,6 +875,7 @@ func generateManualTitle(
 	messages []database.ChatMessage,
 	pasteText map[uuid.UUID]string,
 	fallbackModel fantasy.LanguageModel,
+	providerOptions fantasy.ProviderOptions,
 ) (string, fantasy.Usage, error) {
 	turns := extractManualTitleTurns(messages, pasteText)
 	selected := selectManualTitleTurnIndexes(turns)
@@ -874,6 +906,7 @@ func generateManualTitle(
 	title, usage, err := generateStructuredTitleWithUsage(
 		titleCtx,
 		fallbackModel,
+		providerOptions,
 		systemPrompt,
 		userInput,
 	)
