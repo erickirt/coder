@@ -9085,6 +9085,43 @@ func TestRegenerateChatTitle(t *testing.T) {
 		require.Equal(t, "Test Chat", updated.Title)
 	})
 
+	t.Run("DoesNotBumpHistoryVersion", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := testutil.Context(t, testutil.WaitLong)
+		client, db := newChatClientWithDatabase(t)
+		user := coderdtest.CreateFirstUser(t, client.Client)
+		modelConfig := createTitleGenerationModelConfig(t, client)
+
+		chat := dbgen.Chat(t, db, database.Chat{
+			OrganizationID:    user.OrganizationID,
+			OwnerID:           user.UserID,
+			LastModelConfigID: modelConfig.ID,
+			Title:             "history fence chat",
+		})
+		seedManualTitleSourceMessage(t, db, chat, modelConfig.ID)
+
+		// Leave history_version lagging snapshot_version, as when a
+		// generation task is in flight. A chat_messages write here would
+		// sync it and break that task's commit fence.
+		_, err := db.LockChatAndBumpSnapshotVersion(dbauthz.AsSystemRestricted(ctx), chat.ID)
+		require.NoError(t, err)
+
+		before, err := db.GetChatByID(dbauthz.AsSystemRestricted(ctx), chat.ID)
+		require.NoError(t, err)
+		require.NotEqual(t, before.SnapshotVersion, before.HistoryVersion,
+			"setup must leave history_version lagging snapshot_version")
+
+		updated, err := client.RegenerateChatTitle(ctx, chat.ID)
+		require.NoError(t, err)
+		require.Equal(t, "Test Chat", updated.Title)
+
+		after, err := db.GetChatByID(dbauthz.AsSystemRestricted(ctx), chat.ID)
+		require.NoError(t, err)
+		require.Equal(t, before.HistoryVersion, after.HistoryVersion,
+			"manual title regeneration must not touch chat_messages")
+	})
+
 	t.Run("NoDefaultModelConfig", func(t *testing.T) {
 		t.Parallel()
 
@@ -9254,6 +9291,41 @@ func TestProposeChatTitle(t *testing.T) {
 		require.Equal(t, database.ChatStatusPending, persisted.Status)
 		require.False(t, persisted.WorkerID.Valid)
 		require.True(t, persisted.UpdatedAt.Equal(before.UpdatedAt))
+	})
+
+	t.Run("DoesNotBumpHistoryVersion", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := testutil.Context(t, testutil.WaitLong)
+		client, db := newChatClientWithDatabase(t)
+		user := coderdtest.CreateFirstUser(t, client.Client)
+		modelConfig := createTitleGenerationModelConfig(t, client)
+
+		chat := dbgen.Chat(t, db, database.Chat{
+			OrganizationID:    user.OrganizationID,
+			OwnerID:           user.UserID,
+			LastModelConfigID: modelConfig.ID,
+			Title:             "history fence chat",
+		})
+		seedManualTitleSourceMessage(t, db, chat, modelConfig.ID)
+
+		// See the matching TestRegenerateChatTitle subtest.
+		_, err := db.LockChatAndBumpSnapshotVersion(dbauthz.AsSystemRestricted(ctx), chat.ID)
+		require.NoError(t, err)
+
+		before, err := db.GetChatByID(dbauthz.AsSystemRestricted(ctx), chat.ID)
+		require.NoError(t, err)
+		require.NotEqual(t, before.SnapshotVersion, before.HistoryVersion,
+			"setup must leave history_version lagging snapshot_version")
+
+		resp, err := client.ProposeChatTitle(ctx, chat.ID)
+		require.NoError(t, err)
+		require.Equal(t, "Test Chat", resp.Title)
+
+		after, err := db.GetChatByID(dbauthz.AsSystemRestricted(ctx), chat.ID)
+		require.NoError(t, err)
+		require.Equal(t, before.HistoryVersion, after.HistoryVersion,
+			"title proposal must not touch chat_messages")
 	})
 
 	t.Run("NoDefaultModelConfig", func(t *testing.T) {
