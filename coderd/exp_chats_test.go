@@ -23,6 +23,7 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/sqlc-dev/pqtype"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/xerrors"
 
 	"cdr.dev/slog/v3/sloggers/slogtest"
@@ -3784,6 +3785,63 @@ func TestCreateChatModelConfig(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 		requireChatModelPricing(t, configs[0].ModelConfig, pricing)
+	})
+
+	t.Run("ConcurrentCreatesElectSingleDefault", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := testutil.Context(t, testutil.WaitLong)
+		client := newChatClient(t)
+		_ = coderdtest.CreateFirstUser(t, client.Client)
+
+		aiProvider := createAIProviderForTest(t, client, "openai", "test-api-key")
+
+		// Concurrent creators race to self-elect a default while one claims
+		// it via a follow-up update, mirroring a terraform apply. Unserialized,
+		// the losers 409 on the single-default unique index.
+		const creators = 10
+		contextLimit := int64(4096)
+		var claimed codersdk.ChatModelConfig
+		var eg errgroup.Group
+		for i := range creators - 1 {
+			eg.Go(func() error {
+				_, err := client.CreateChatModelConfig(ctx, codersdk.CreateChatModelConfigRequest{
+					AIProviderID: &aiProvider.ID,
+					Model:        fmt.Sprintf("gpt-4o-mini-%d", i),
+					ContextLimit: &contextLimit,
+				})
+				return err
+			})
+		}
+		eg.Go(func() error {
+			created, err := client.CreateChatModelConfig(ctx, codersdk.CreateChatModelConfigRequest{
+				AIProviderID: &aiProvider.ID,
+				Model:        "gpt-4o",
+				ContextLimit: &contextLimit,
+			})
+			if err != nil {
+				return xerrors.Errorf("create claimed config: %w", err)
+			}
+			claimed, err = client.UpdateChatModelConfig(ctx, created.ID, codersdk.UpdateChatModelConfigRequest{
+				IsDefault: ptr.Ref(true),
+			})
+			if err != nil {
+				return xerrors.Errorf("promote claimed config: %w", err)
+			}
+			return nil
+		})
+		require.NoError(t, eg.Wait())
+
+		configs, err := client.ListChatModelConfigs(ctx)
+		require.NoError(t, err)
+		require.Len(t, configs, creators)
+		var defaults []uuid.UUID
+		for _, cfg := range configs {
+			if cfg.IsDefault {
+				defaults = append(defaults, cfg.ID)
+			}
+		}
+		require.Equal(t, []uuid.UUID{claimed.ID}, defaults)
 	})
 
 	t.Run("RejectsNegativePricing", func(t *testing.T) {

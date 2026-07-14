@@ -7039,6 +7039,20 @@ func validateChatModelConfigProviderModel(aiProvider database.AIProvider, model 
 	return nil
 }
 
+// inChatModelConfigWriteTx runs fn in a transaction that holds the advisory
+// lock serializing chat model config writes. All writes to the table must go
+// through this helper so concurrent writers cannot act on stale reads, e.g.
+// two creates on an empty deployment both self-promoting to default and
+// violating the idx_chat_model_configs_single_default unique index.
+func (api *API) inChatModelConfigWriteTx(ctx context.Context, fn func(tx database.Store) error) error {
+	return api.Database.InTx(func(tx database.Store) error {
+		if err := tx.AcquireLock(ctx, database.LockIDChatModelConfigWrites); err != nil {
+			return xerrors.Errorf("acquire chat model config write lock: %w", err)
+		}
+		return fn(tx)
+	}, nil)
+}
+
 func (api *API) createChatModelConfig(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	apiKey := httpmw.APIKey(r)
@@ -7141,7 +7155,7 @@ func (api *API) createChatModelConfig(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	var inserted database.ChatModelConfig
-	err = api.Database.InTx(func(tx database.Store) error {
+	err = api.inChatModelConfigWriteTx(ctx, func(tx database.Store) error {
 		//nolint:gocritic // The route already authorized chat model config updates.
 		lockedAIProvider, err := tx.GetAIProviderByIDForReferenceLock(dbauthz.AsChatd(ctx), insertParams.AIProviderID.UUID)
 		if err != nil {
@@ -7193,7 +7207,7 @@ func (api *API) createChatModelConfig(rw http.ResponseWriter, r *http.Request) {
 		}
 		inserted = refreshedConfig
 		return nil
-	}, nil)
+	})
 	if err != nil {
 		var providerModelErr *chatModelConfigProviderModelError
 		switch {
@@ -7350,7 +7364,7 @@ func (api *API) updateChatModelConfig(rw http.ResponseWriter, r *http.Request) {
 	// Re-derive the provider type under lock when the model or provider changes.
 	revalidateProviderModel := updateParams.AIProviderID.Valid && (req.AIProviderID != nil || strings.TrimSpace(req.Model) != "")
 	var updated database.ChatModelConfig
-	err = api.Database.InTx(func(tx database.Store) error {
+	err = api.inChatModelConfigWriteTx(ctx, func(tx database.Store) error {
 		if revalidateProviderModel {
 			//nolint:gocritic // The route already authorized chat model config updates.
 			aiProvider, err := tx.GetAIProviderByIDForReferenceLock(dbauthz.AsChatd(ctx), updateParams.AIProviderID.UUID)
@@ -7406,7 +7420,7 @@ func (api *API) updateChatModelConfig(rw http.ResponseWriter, r *http.Request) {
 		}
 		updated = refreshedConfig
 		return nil
-	}, nil)
+	})
 	if err != nil {
 		var providerModelErr *chatModelConfigProviderModelError
 		switch {
@@ -7466,12 +7480,12 @@ func (api *API) deleteChatModelConfig(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Database.InTx(func(tx database.Store) error {
+	if err := api.inChatModelConfigWriteTx(ctx, func(tx database.Store) error {
 		if err := tx.DeleteChatModelConfigByID(ctx, modelConfigID); err != nil {
 			return err
 		}
 		return ensureDefaultChatModelConfig(ctx, tx)
-	}, nil); err != nil {
+	}); err != nil {
 		httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
 			Message: "Failed to delete chat model config.",
 			Detail:  err.Error(),
