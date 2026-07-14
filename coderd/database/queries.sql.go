@@ -34545,9 +34545,13 @@ SELECT DISTINCT ON (workspace_id)
   id, created_at, agent_id, app_id, workspace_id, state, message, uri
 FROM workspace_app_statuses
 WHERE workspace_id = ANY($1 :: uuid[])
-ORDER BY workspace_id, created_at DESC
+ORDER BY workspace_id, created_at DESC, id DESC
 `
 
+// id DESC is a stability tiebreaker, not an insertion-order signal: back-to-back
+// inserts can share a created_at on platforms with coarse time.Now() resolution,
+// and id is a random UUID, so this only guarantees a deterministic pick, not the
+// later row. Callers must not depend on sub-microsecond recency here.
 func (q *sqlQuerier) GetLatestWorkspaceAppStatusesByWorkspaceIDs(ctx context.Context, ids []uuid.UUID) ([]WorkspaceAppStatus, error) {
 	rows, err := q.db.QueryContext(ctx, getLatestWorkspaceAppStatusesByWorkspaceIDs, pq.Array(ids))
 	if err != nil {
