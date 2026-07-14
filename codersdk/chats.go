@@ -1484,6 +1484,29 @@ type ChatModelCallConfig struct {
 // UnmarshalJSON accepts both the current nested cost object and the previous
 // top-level pricing keys so legacy stored model_config JSON continues to load.
 func (c *ChatModelCallConfig) UnmarshalJSON(data []byte) error {
+	return c.unmarshal(data, json.Unmarshal)
+}
+
+// UnmarshalStrict is UnmarshalJSON except unknown fields are an error instead
+// of being silently dropped. Clients that accept free-form model config JSON
+// (e.g. the Terraform provider) use it to reject settings this SDK version
+// does not recognize before they are lost.
+func (c *ChatModelCallConfig) UnmarshalStrict(data []byte) error {
+	return c.unmarshal(data, func(data []byte, v any) error {
+		dec := json.NewDecoder(bytes.NewReader(data))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(v); err != nil {
+			return err
+		}
+		// Match json.Unmarshal: reject any trailing data after the value.
+		if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+			return xerrors.New("unexpected trailing data after JSON value")
+		}
+		return nil
+	})
+}
+
+func (c *ChatModelCallConfig) unmarshal(data []byte, decode func(data []byte, v any) error) error {
 	type chatModelCallConfigAlias ChatModelCallConfig
 	aux := struct {
 		*chatModelCallConfigAlias
@@ -1494,7 +1517,7 @@ func (c *ChatModelCallConfig) UnmarshalJSON(data []byte) error {
 	}{
 		chatModelCallConfigAlias: (*chatModelCallConfigAlias)(c),
 	}
-	if err := json.Unmarshal(data, &aux); err != nil {
+	if err := decode(data, &aux); err != nil {
 		return err
 	}
 
