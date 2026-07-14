@@ -1,6 +1,7 @@
 package coderd
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -48,6 +49,7 @@ import (
 	"github.com/coder/coder/v2/coderd/workspaceapps"
 	"github.com/coder/coder/v2/coderd/wsbuilder"
 	"github.com/coder/coder/v2/coderd/x/chatd"
+	"github.com/coder/coder/v2/coderd/x/chatd/agentselect"
 	"github.com/coder/coder/v2/coderd/x/chatd/chaterror"
 	"github.com/coder/coder/v2/coderd/x/chatd/chatprompt"
 	"github.com/coder/coder/v2/coderd/x/chatd/chatprovider"
@@ -474,7 +476,59 @@ func (api *API) listChats(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpapi.Write(ctx, rw, http.StatusOK, db2sdk.ChatRowsWithChildren(chatRows, childRows, diffStatusesByChatID))
+	sdkChats := db2sdk.ChatRowsWithChildren(chatRows, childRows, diffStatusesByChatID)
+	api.enrichChatWithWorkspaceAgentIDs(ctx, sdkChats)
+	httpapi.Write(ctx, rw, http.StatusOK, sdkChats)
+}
+
+// enrichChatWithWorkspaceAgentIDs fills missing AgentIDs for chats with a bound
+// workspace, since chatd persists the binding lazily. Best-effort and
+// response-only; on error the field stays null.
+func (api *API) enrichChatWithWorkspaceAgentIDs(ctx context.Context, chats []codersdk.Chat) {
+	missingChats := make([]*codersdk.Chat, 0, len(chats))
+	var workspaceIDs []uuid.UUID
+	addMissing := func(chat *codersdk.Chat) {
+		if chat.AgentID == nil && chat.WorkspaceID != nil {
+			missingChats = append(missingChats, chat)
+			workspaceIDs = append(workspaceIDs, *chat.WorkspaceID)
+		}
+	}
+	for i := range chats {
+		addMissing(&chats[i])
+		for j := range chats[i].Children {
+			addMissing(&chats[i].Children[j])
+		}
+	}
+
+	slices.SortFunc(workspaceIDs, func(a, b uuid.UUID) int {
+		return cmp.Compare(a.String(), b.String())
+	})
+	ids := slices.Compact(workspaceIDs)
+	rows, err := api.Database.GetWorkspaceAgentsInLatestBuildByWorkspaceIDs(ctx, ids)
+	if err != nil {
+		return
+	}
+
+	agentsByWorkspace := make(map[uuid.UUID][]database.WorkspaceAgent)
+	for _, row := range rows {
+		agentsByWorkspace[row.WorkspaceID] = append(agentsByWorkspace[row.WorkspaceID], row.WorkspaceAgent)
+	}
+	agentIDs := make(map[uuid.UUID]uuid.UUID, len(agentsByWorkspace))
+	for workspaceID, agents := range agentsByWorkspace {
+		agent, err := agentselect.FindChatAgent(agents)
+		if err != nil {
+			api.Logger.Debug(ctx, "failed to select chat agent for enrichment", slog.F("workspace_id", workspaceID), slog.Error(err))
+			continue
+		}
+		agentIDs[workspaceID] = agent.ID
+	}
+
+	for _, chat := range missingChats {
+		if agentID, ok := agentIDs[*chat.WorkspaceID]; ok {
+			id := agentID
+			chat.AgentID = &id
+		}
+	}
 }
 
 func (api *API) getChatDiffStatusesByChatID(
@@ -2196,6 +2250,10 @@ func (api *API) getChat(rw http.ResponseWriter, r *http.Request) {
 		sdkChat.Children = db2sdk.ChildChatRows(childRows, childDiffStatuses)
 	}
 
+	enriched := []codersdk.Chat{sdkChat}
+	api.enrichChatWithWorkspaceAgentIDs(ctx, enriched)
+	sdkChat = enriched[0]
+
 	httpapi.Write(ctx, rw, http.StatusOK, sdkChat)
 }
 
@@ -2459,9 +2517,11 @@ func (api *API) watchChatGit(rw http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if len(agents) == 0 {
+	agent, err := agentselect.FindChatAgent(agents)
+	if err != nil {
 		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
-			Message: codersdk.ChatGitWatchWorkspaceNoAgentsMessage,
+			Message: codersdk.ChatGitWatchNoEligibleAgentMessage,
+			Detail:  err.Error(),
 		})
 		return
 	}
@@ -2469,7 +2529,7 @@ func (api *API) watchChatGit(rw http.ResponseWriter, r *http.Request) {
 	apiAgent, err := db2sdk.WorkspaceAgent(
 		api.DERPMap(),
 		*api.TailnetCoordinator.Load(),
-		agents[0],
+		agent,
 		nil,
 		nil,
 		nil,
@@ -2493,7 +2553,7 @@ func (api *API) watchChatGit(rw http.ResponseWriter, r *http.Request) {
 	dialCtx, dialCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer dialCancel()
 
-	agentConn, release, err := api.agentProvider.AgentConn(dialCtx, agents[0].ID)
+	agentConn, release, err := api.agentProvider.AgentConn(dialCtx, agent.ID)
 	if err != nil {
 		httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
 			Message: "Internal error dialing workspace agent.",
@@ -2614,9 +2674,11 @@ func (api *API) watchChatDesktop(rw http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if len(agents) == 0 {
+	agent, err := agentselect.FindChatAgent(agents)
+	if err != nil {
 		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
-			Message: "Chat workspace has no agents.",
+			Message: codersdk.ChatGitWatchNoEligibleAgentMessage,
+			Detail:  err.Error(),
 		})
 		return
 	}
@@ -2624,7 +2686,7 @@ func (api *API) watchChatDesktop(rw http.ResponseWriter, r *http.Request) {
 	apiAgent, err := db2sdk.WorkspaceAgent(
 		api.DERPMap(),
 		*api.TailnetCoordinator.Load(),
-		agents[0],
+		agent,
 		nil,
 		nil,
 		nil,
@@ -2648,7 +2710,7 @@ func (api *API) watchChatDesktop(rw http.ResponseWriter, r *http.Request) {
 	dialCtx, dialCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer dialCancel()
 
-	agentConn, release, err := api.agentProvider.AgentConn(dialCtx, agents[0].ID)
+	agentConn, release, err := api.agentProvider.AgentConn(dialCtx, agent.ID)
 	if err != nil {
 		httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
 			Message: "Failed to dial workspace agent.",

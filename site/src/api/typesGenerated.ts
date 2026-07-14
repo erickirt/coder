@@ -2300,7 +2300,8 @@ export const ChatGitWatchAgentStatePrefix = "Agent state is ";
  * IsChatGitWatchFallbackMessage instead of coupling to exact wording.
  * Keep these in sync with coderd/exp_chats.go.
  */
-export const ChatGitWatchNoWorkspaceMessage = "Chat has no workspace to watch.";
+export const ChatGitWatchNoEligibleAgentMessage =
+	"No eligible agent found for chat workspace.";
 
 // From codersdk/chats.go
 /**
@@ -2312,8 +2313,7 @@ export const ChatGitWatchNoWorkspaceMessage = "Chat has no workspace to watch.";
  * IsChatGitWatchFallbackMessage instead of coupling to exact wording.
  * Keep these in sync with coderd/exp_chats.go.
  */
-export const ChatGitWatchWorkspaceNoAgentsMessage =
-	"Chat workspace has no agents.";
+export const ChatGitWatchNoWorkspaceMessage = "Chat has no workspace to watch.";
 
 // From codersdk/chats.go
 /**

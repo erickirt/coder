@@ -1629,7 +1629,7 @@ type ChatDiffContents struct {
 const (
 	ChatGitWatchNoWorkspaceMessage       = "Chat has no workspace to watch."
 	ChatGitWatchWorkspaceNotFoundMessage = "Chat workspace not found."
-	ChatGitWatchWorkspaceNoAgentsMessage = "Chat workspace has no agents."
+	ChatGitWatchNoEligibleAgentMessage   = "No eligible agent found for chat workspace."
 	// ChatGitWatchAgentStatePrefix is the common prefix of the
 	// message produced by ChatGitWatchAgentStateMessage. The CLI
 	// uses it as a mechanical fingerprint for the "agent not yet
@@ -1654,7 +1654,7 @@ func IsChatGitWatchFallbackMessage(msg string) bool {
 	switch trimmed {
 	case ChatGitWatchNoWorkspaceMessage,
 		ChatGitWatchWorkspaceNotFoundMessage,
-		ChatGitWatchWorkspaceNoAgentsMessage:
+		ChatGitWatchNoEligibleAgentMessage:
 		return true
 	}
 	return strings.HasPrefix(trimmed, ChatGitWatchAgentStatePrefix)
