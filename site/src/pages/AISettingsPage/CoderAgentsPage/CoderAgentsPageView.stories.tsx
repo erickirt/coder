@@ -105,6 +105,14 @@ const exploreDisabledModelConfig = buildModelConfig({
 	context_limit: 200_000,
 });
 
+const compactionDisabledModelConfig = buildModelConfig({
+	id: "model-compaction-disabled",
+	model: "gpt-4.1-nano-legacy",
+	display_name: "GPT 4.1 Nano Legacy",
+	enabled: false,
+	context_limit: 128_000,
+});
+
 const allModelConfigs: TypesGen.ChatModelConfig[] = [
 	generalModelConfig,
 	claudeSonnetModelConfig,
@@ -114,6 +122,7 @@ const allModelConfigs: TypesGen.ChatModelConfig[] = [
 	generalDisabledModelConfig,
 	titleDisabledModelConfig,
 	exploreDisabledModelConfig,
+	compactionDisabledModelConfig,
 ];
 
 const providerInfoByID = new Map([
@@ -136,6 +145,7 @@ const buildArgs = (
 	isSaveAdminOverridesError: false,
 	generalModelOverrideData: buildOverrideData("general"),
 	titleGenerationModelOverrideData: buildTitleGenerationModelOverrideData(),
+	compactionModelOverrideData: buildOverrideData("compaction"),
 	exploreModelOverrideData: buildOverrideData("explore"),
 	modelConfigsData: allModelConfigs,
 	providerInfoByID,
@@ -148,6 +158,9 @@ const buildArgs = (
 	onSaveTitleGenerationModel: fn(),
 	isSavingTitleGenerationModel: false,
 	isSaveTitleGenerationModelError: false,
+	onSaveCompactionModel: fn(),
+	isSavingCompactionModel: false,
+	isSaveCompactionModelError: false,
 	onSaveExploreModelOverride: fn(),
 	isSavingExploreModelOverride: false,
 	isSaveExploreModelOverrideError: false,
@@ -223,6 +236,7 @@ export const AllOverridesUnset: Story = {
 		expect(headings.map((heading) => heading.textContent?.trim())).toEqual([
 			"General model",
 			"Title generation model",
+			"Compaction model",
 			"Explore subagent model",
 		]);
 		await canvas.findByText(
@@ -234,6 +248,10 @@ export const AllOverridesUnset: Story = {
 			{
 				headingName: "Title generation model",
 				placeholder: "Use title default",
+			},
+			{
+				headingName: "Compaction model",
+				placeholder: "Use chat model",
 			},
 			{
 				headingName: "Explore subagent model",
@@ -305,6 +323,9 @@ export const EachOverrideSetToEnabledModel: Story = {
 		titleGenerationModelOverrideData: buildTitleGenerationModelOverrideData({
 			model_config_id: titleModelConfig.id,
 		}),
+		compactionModelOverrideData: buildOverrideData("compaction", {
+			model_config_id: claudeSonnetModelConfig.id,
+		}),
 		exploreModelOverrideData: buildOverrideData("explore", {
 			model_config_id: exploreFallbackModelConfig.id,
 		}),
@@ -314,6 +335,10 @@ export const EachOverrideSetToEnabledModel: Story = {
 		const titleSection = await getSection(
 			canvasElement,
 			"Title generation model",
+		);
+		const compactionSection = await getSection(
+			canvasElement,
+			"Compaction model",
 		);
 		const exploreSection = await getSection(
 			canvasElement,
@@ -372,6 +397,26 @@ export const EachOverrideSetToEnabledModel: Story = {
 			);
 		});
 
+		await selectModelInSection(
+			compactionSection,
+			canvasElement,
+			/claude sonnet 4/i,
+			"GPT 4o Mini",
+		);
+		const compactionSaveButton = within(compactionSection).getByRole("button", {
+			name: "Save",
+		});
+		await waitFor(() => {
+			expect(compactionSaveButton).toBeEnabled();
+		});
+		await userEvent.click(compactionSaveButton);
+		await waitFor(() => {
+			expect(args.onSaveCompactionModel).toHaveBeenCalledWith(
+				{ model_config_id: titleModelConfig.id },
+				expect.anything(),
+			);
+		});
+
 		const exploreClearButton = within(exploreSection).getByRole("button", {
 			name: "Clear",
 		});
@@ -400,6 +445,9 @@ export const MalformedOverridesRemainClearableAndSaveable: Story = {
 		titleGenerationModelOverrideData: buildTitleGenerationModelOverrideData({
 			is_malformed: true,
 		}),
+		compactionModelOverrideData: buildOverrideData("compaction", {
+			is_malformed: true,
+		}),
 		exploreModelOverrideData: buildOverrideData("explore", {
 			is_malformed: true,
 		}),
@@ -410,12 +458,21 @@ export const MalformedOverridesRemainClearableAndSaveable: Story = {
 			canvasElement,
 			"Title generation model",
 		);
+		const compactionSection = await getSection(
+			canvasElement,
+			"Compaction model",
+		);
 		const exploreSection = await getSection(
 			canvasElement,
 			"Explore subagent model",
 		);
 
-		for (const section of [generalSection, titleSection, exploreSection]) {
+		for (const section of [
+			generalSection,
+			titleSection,
+			compactionSection,
+			exploreSection,
+		]) {
 			await within(section).findByText(OVERRIDE_MALFORMED_WARNING);
 		}
 
@@ -460,6 +517,20 @@ export const MalformedOverridesRemainClearableAndSaveable: Story = {
 				expect.anything(),
 			);
 		});
+
+		const compactionSaveButton = within(compactionSection).getByRole("button", {
+			name: "Save",
+		});
+		await waitFor(() => {
+			expect(compactionSaveButton).toBeEnabled();
+		});
+		await userEvent.click(compactionSaveButton);
+		await waitFor(() => {
+			expect(args.onSaveCompactionModel).toHaveBeenCalledWith(
+				{ model_config_id: "" },
+				expect.anything(),
+			);
+		});
 	},
 };
 
@@ -471,6 +542,9 @@ export const UnavailableSavedModels: Story = {
 		titleGenerationModelOverrideData: buildTitleGenerationModelOverrideData({
 			model_config_id: titleDisabledModelConfig.id,
 		}),
+		compactionModelOverrideData: buildOverrideData("compaction", {
+			model_config_id: compactionDisabledModelConfig.id,
+		}),
 		exploreModelOverrideData: buildOverrideData("explore", {
 			model_config_id: exploreDisabledModelConfig.id,
 		}),
@@ -481,12 +555,16 @@ export const UnavailableSavedModels: Story = {
 			canvasElement,
 			"Title generation model",
 		);
+		const compactionSection = await getSection(
+			canvasElement,
+			"Compaction model",
+		);
 		const exploreSection = await getSection(
 			canvasElement,
 			"Explore subagent model",
 		);
 
-		for (const section of [generalSection, exploreSection]) {
+		for (const section of [generalSection, compactionSection, exploreSection]) {
 			await within(section).findByText(UNAVAILABLE_SAVED_MODEL_WARNING);
 			expect(
 				within(section).getByRole("combobox", { name: "Unavailable model" }),
