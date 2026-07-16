@@ -1,6 +1,6 @@
 import { type FormikContextType, getIn } from "formik";
 import { InfoIcon } from "lucide-react";
-import type { FC } from "react";
+import { type FC, Fragment, type ReactNode } from "react";
 import {
 	type FieldSchema,
 	getVisibleGeneralFields,
@@ -275,7 +275,10 @@ const SelectField: FC<
 			>
 				<SelectTrigger
 					id={fieldKey}
-					className={cn("min-w-0", fieldError && "border-content-destructive")}
+					className={cn(
+						"min-w-0 shadow-none",
+						fieldError && "border-content-destructive",
+					)}
 					aria-invalid={Boolean(fieldError)}
 					aria-describedby={fieldError ? errorId : undefined}
 				>
@@ -542,6 +545,7 @@ interface ModelConfigFieldsProps {
 	form: FormikContextType<ModelFormValues>;
 	fieldErrors: ModelConfigFormBuildResult["fieldErrors"];
 	disabled: boolean;
+	children?: ReactNode;
 }
 
 /**
@@ -556,6 +560,7 @@ export const ModelConfigFields: FC<ModelConfigFieldsProps> = ({
 	form,
 	fieldErrors,
 	disabled,
+	children,
 }) => {
 	const normalized = normalizeProvider(provider);
 	const resolved = resolveProvider(normalized);
@@ -583,20 +588,25 @@ export const ModelConfigFields: FC<ModelConfigFieldsProps> = ({
 				const fieldKey = `config.${toFormFieldKey(resolved, field.json_name)}`;
 				const errorKey = toFormFieldKey(resolved, field.json_name);
 				return (
-					<div key={fieldKey} className={colSpanClass[colSpan(field)]}>
-						<SchemaField
-							field={field}
-							fieldKey={fieldKey}
-							errorKey={errorKey}
-							form={form}
-							fieldErrors={fieldErrors}
-							disabled={
-								disabled || isFieldConflictDisabled(field, fieldValueByName)
-							}
-						/>
-					</div>
+					<Fragment key={fieldKey}>
+						<div className={colSpanClass[colSpan(field)]}>
+							<SchemaField
+								field={field}
+								fieldKey={fieldKey}
+								errorKey={errorKey}
+								form={form}
+								fieldErrors={fieldErrors}
+								disabled={
+									disabled || isFieldConflictDisabled(field, fieldValueByName)
+								}
+							/>
+						</div>
+						{field.json_name === "thinking.budget_tokens" && children}
+					</Fragment>
 				);
 			})}
+			{!sorted.some((field) => field.json_name === "thinking.budget_tokens") &&
+				children}
 		</div>
 	);
 };
@@ -668,9 +678,9 @@ export const ReasoningEffortConfigFields: FC<ModelConfigFieldsProps> = ({
 	disabled,
 }) => {
 	const ctx: FieldRenderContext = { form, fieldErrors, disabled };
-	const fields = getVisibleGeneralFields().filter(({ json_name }) =>
-		isReasoningEffortField(json_name),
-	);
+	const fields = getVisibleGeneralFields()
+		.filter(({ json_name }) => isReasoningEffortField(json_name))
+		.reverse();
 
 	return (
 		<>
