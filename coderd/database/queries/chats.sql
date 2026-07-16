@@ -312,6 +312,32 @@ SET
 WHERE
     id = @id::bigint;
 
+-- name: BackfillChatMessagesSearchTsv :execrows
+-- Backfills chat_messages.search_tsv for pending rows, newest first.
+-- The WHERE clause must match the predicate of
+-- idx_chat_messages_search_tsv_pending exactly so the partial index
+-- serves this query.
+WITH batch AS (
+    SELECT id FROM chat_messages
+    WHERE search_tsv IS NULL
+      AND deleted = false
+      AND visibility IN ('user', 'both')
+      AND role IN ('user', 'assistant')
+    ORDER BY id DESC
+    LIMIT @batch_size::int
+)
+UPDATE chat_messages cm
+-- NULL means "pending", empty tsvector means "backfilled, no text".
+SET search_tsv = COALESCE(
+    to_tsvector('simple', chat_message_search_text(cm.content)),
+    ''::tsvector)
+FROM batch WHERE cm.id = batch.id;
+
+-- name: ChatSearchQueryIsEmpty :one
+-- Reports whether search text tokenizes to an empty tsquery (e.g. '!!!').
+-- Used to reject input that would silently match nothing.
+SELECT numnode(websearch_to_tsquery('simple', @search::text)) = 0 AS is_empty;
+
 -- name: GetChatByID :one
 SELECT *
 FROM chats_expanded
@@ -648,6 +674,46 @@ WHERE
             FROM chat_diff_statuses cds
             WHERE cds.chat_id = chats_expanded.id
                 AND cds.pull_request_title ILIKE '%' || @pr_title_query || '%'
+        )
+        ELSE true
+    END
+    -- websearch_to_tsquery accepts quoted phrases, OR, and -negation;
+    -- the 'simple' config folds case and skips stemming.
+    AND CASE
+        WHEN @search::text != '' THEN (
+            -- Served by idx_chats_title_fts.
+            to_tsvector('simple', chats_expanded.title) @@ websearch_to_tsquery('simple', @search)
+            -- Served by idx_chat_diff_statuses_pr_title_fts.
+            OR EXISTS (
+                SELECT 1
+                FROM chat_diff_statuses cds
+                WHERE cds.chat_id = chats_expanded.id
+                    AND to_tsvector('simple', cds.pull_request_title) @@ websearch_to_tsquery('simple', @search)
+            )
+            -- The WHERE clause must repeat the predicate of the partial index
+            -- idx_chat_messages_search_tsv so the planner can use it. Additional
+			-- filters should still be fine.
+            OR EXISTS (
+                SELECT 1
+                FROM chat_messages cm
+                WHERE cm.chat_id = chats_expanded.id
+                    AND cm.search_tsv IS NOT NULL
+                    AND cm.deleted = false
+                    AND cm.visibility IN ('user', 'both')
+                    AND cm.role IN ('user', 'assistant')
+                    AND cm.search_tsv @@ websearch_to_tsquery('simple', @search)
+            )
+            -- Skip an explicit pr_number lookup unless the search is a valid bigint.
+            OR CASE
+                WHEN @search ~ '^[0-9]{1,18}$' THEN EXISTS (
+                    SELECT 1
+                    FROM chat_diff_statuses cds
+                    WHERE cds.chat_id = chats_expanded.id
+                        AND cds.pr_number IS NOT NULL
+                        AND cds.pr_number = @search::bigint
+                )
+                ELSE false
+            END
         )
         ELSE true
     END

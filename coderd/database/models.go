@@ -5123,6 +5123,8 @@ type ChatMessage struct {
 	Revision            int64                 `db:"revision" json:"revision"`
 	// Stores the selected effort for the turn triggered by this message.
 	ReasoningEffort NullChatReasoningEffort `db:"reasoning_effort" json:"reasoning_effort"`
+	// Used for full text search. NULL initially, populated async via background job.
+	SearchTsv interface{} `db:"search_tsv" json:"search_tsv"`
 }
 
 type ChatModelConfig struct {
