@@ -1012,11 +1012,13 @@ type sqlcQuerier interface {
 	// a chat's pinned hash and pinned bodies are always written together.
 	// Runs as a side effect of an agent push and of chat-create hydration,
 	// so chats created before the agent was ready pick up the snapshot
-	// without a dirty event. The ON CONFLICT upsert is defensive: a
+	// without a dirty marker. The ON CONFLICT upsert is defensive: a
 	// not-yet-hydrated chat has no pinned rows, so it normally inserts.
 	// Does not bump chats.updated_at; the resource upsert's ON CONFLICT branch
 	// sets chat_context_resources.updated_at on the rows it rewrites.
-	HydrateAgentChatsContext(ctx context.Context, arg HydrateAgentChatsContextParams) error
+	// Returns the hydrated chat IDs so callers can notify watchers of every
+	// chat the statement pinned.
+	HydrateAgentChatsContext(ctx context.Context, arg HydrateAgentChatsContextParams) ([]uuid.UUID, error)
 	// Increments generation_attempt and returns the resulting value.
 	IncrementChatGenerationAttempt(ctx context.Context, id uuid.UUID) (int64, error)
 	// Adds cost_micros to the spend for (user_id, effective_group_id, day).
