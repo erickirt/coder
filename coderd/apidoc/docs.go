@@ -4752,6 +4752,49 @@ const docTemplate = `{
                 ]
             }
         },
+        "/api/v2/organizations/{organization}/groups/ai/spend": {
+            "get": {
+                "description": "Returns AI spend limits and aggregate spend for the requested groups.\nA maximum of 100 group IDs may be requested per call, and requests with more are rejected, so callers are expected to batch across multiple requests.\nUnknown or unreadable group IDs are silently omitted.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Enterprise"
+                ],
+                "summary": "Get organization groups AI spend",
+                "operationId": "get-organization-groups-ai-spend",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Organization ID",
+                        "name": "organization",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of group IDs (maximum 100)",
+                        "name": "group_ids",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/codersdk.OrganizationGroupsAISpend"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "CoderSessionToken": []
+                    }
+                ]
+            }
+        },
         "/api/v2/organizations/{organization}/groups/{groupName}": {
             "get": {
                 "produces": [
@@ -21619,6 +21662,44 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string",
+                    "format": "date-time"
+                }
+            }
+        },
+        "codersdk.OrganizationGroupAISpend": {
+            "type": "object",
+            "properties": {
+                "current_spend_micros": {
+                    "description": "CurrentSpendMicros is the group's spend over the current budget\nperiod.",
+                    "type": "integer"
+                },
+                "group_id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "spend_limit_micros": {
+                    "description": "SpendLimitMicros is the group's configured AI spend limit. Null when\nthe group has no configured budget.",
+                    "type": "integer"
+                }
+            }
+        },
+        "codersdk.OrganizationGroupsAISpend": {
+            "type": "object",
+            "properties": {
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/codersdk.OrganizationGroupAISpend"
+                    }
+                },
+                "period_end": {
+                    "description": "PeriodEnd is the exclusive upper bound of the current budget\nperiod.",
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "period_start": {
+                    "description": "PeriodStart is the inclusive lower bound of the current budget\nperiod.",
                     "type": "string",
                     "format": "date-time"
                 }
