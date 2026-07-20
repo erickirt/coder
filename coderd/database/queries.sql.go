@@ -7681,7 +7681,7 @@ func (q *sqlQuerier) GetChatHeartbeat(ctx context.Context, arg GetChatHeartbeatP
 
 const getChatMessageByID = `-- name: GetChatMessageByID :one
 SELECT
-    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, api_key_id, revision, reasoning_effort, search_tsv
+    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, revision, reasoning_effort, search_tsv
 FROM
     chat_messages
 WHERE
@@ -7714,7 +7714,6 @@ func (q *sqlQuerier) GetChatMessageByID(ctx context.Context, id int64) (ChatMess
 		&i.RuntimeMs,
 		&i.Deleted,
 		&i.ProviderResponseID,
-		&i.APIKeyID,
 		&i.Revision,
 		&i.ReasoningEffort,
 		&i.SearchTsv,
@@ -7807,7 +7806,7 @@ func (q *sqlQuerier) GetChatMessageSummariesPerChat(ctx context.Context, created
 
 const getChatMessagesByChatID = `-- name: GetChatMessagesByChatID :many
 SELECT
-    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, api_key_id, revision, reasoning_effort, search_tsv
+    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, revision, reasoning_effort, search_tsv
 FROM
     chat_messages
 WHERE
@@ -7855,7 +7854,6 @@ func (q *sqlQuerier) GetChatMessagesByChatID(ctx context.Context, arg GetChatMes
 			&i.RuntimeMs,
 			&i.Deleted,
 			&i.ProviderResponseID,
-			&i.APIKeyID,
 			&i.Revision,
 			&i.ReasoningEffort,
 			&i.SearchTsv,
@@ -7875,7 +7873,7 @@ func (q *sqlQuerier) GetChatMessagesByChatID(ctx context.Context, arg GetChatMes
 
 const getChatMessagesByChatIDAscPaginated = `-- name: GetChatMessagesByChatIDAscPaginated :many
 SELECT
-    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, api_key_id, revision, reasoning_effort, search_tsv
+    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, revision, reasoning_effort, search_tsv
 FROM
     chat_messages
 WHERE
@@ -7926,7 +7924,6 @@ func (q *sqlQuerier) GetChatMessagesByChatIDAscPaginated(ctx context.Context, ar
 			&i.RuntimeMs,
 			&i.Deleted,
 			&i.ProviderResponseID,
-			&i.APIKeyID,
 			&i.Revision,
 			&i.ReasoningEffort,
 			&i.SearchTsv,
@@ -7946,7 +7943,7 @@ func (q *sqlQuerier) GetChatMessagesByChatIDAscPaginated(ctx context.Context, ar
 
 const getChatMessagesByChatIDDescPaginated = `-- name: GetChatMessagesByChatIDDescPaginated :many
 SELECT
-    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, api_key_id, revision, reasoning_effort, search_tsv
+    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, revision, reasoning_effort, search_tsv
 FROM
     chat_messages
 WHERE
@@ -8010,7 +8007,6 @@ func (q *sqlQuerier) GetChatMessagesByChatIDDescPaginated(ctx context.Context, a
 			&i.RuntimeMs,
 			&i.Deleted,
 			&i.ProviderResponseID,
-			&i.APIKeyID,
 			&i.Revision,
 			&i.ReasoningEffort,
 			&i.SearchTsv,
@@ -8030,7 +8026,7 @@ func (q *sqlQuerier) GetChatMessagesByChatIDDescPaginated(ctx context.Context, a
 
 const getChatMessagesByRevisionForStream = `-- name: GetChatMessagesByRevisionForStream :many
 SELECT
-    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, api_key_id, revision, reasoning_effort, search_tsv
+    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, revision, reasoning_effort, search_tsv
 FROM
     chat_messages
 WHERE
@@ -8077,7 +8073,6 @@ func (q *sqlQuerier) GetChatMessagesByRevisionForStream(ctx context.Context, arg
 			&i.RuntimeMs,
 			&i.Deleted,
 			&i.ProviderResponseID,
-			&i.APIKeyID,
 			&i.Revision,
 			&i.ReasoningEffort,
 			&i.SearchTsv,
@@ -8113,7 +8108,7 @@ WITH latest_compressed_summary AS (
         1
 )
 SELECT
-    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, api_key_id, revision, reasoning_effort, search_tsv
+    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, revision, reasoning_effort, search_tsv
 FROM
     chat_messages
 WHERE
@@ -8185,7 +8180,6 @@ func (q *sqlQuerier) GetChatMessagesForPromptByChatID(ctx context.Context, chatI
 			&i.RuntimeMs,
 			&i.Deleted,
 			&i.ProviderResponseID,
-			&i.APIKeyID,
 			&i.Revision,
 			&i.ReasoningEffort,
 			&i.SearchTsv,
@@ -8252,7 +8246,7 @@ func (q *sqlQuerier) GetChatModelConfigsForTelemetry(ctx context.Context) ([]Get
 }
 
 const getChatQueuedMessageByID = `-- name: GetChatQueuedMessageByID :one
-SELECT id, chat_id, content, created_at, model_config_id, api_key_id, position, created_by, reasoning_effort FROM chat_queued_messages
+SELECT id, chat_id, content, created_at, model_config_id, position, created_by, reasoning_effort FROM chat_queued_messages
 WHERE id = $1::bigint AND chat_id = $2::uuid
 `
 
@@ -8270,7 +8264,6 @@ func (q *sqlQuerier) GetChatQueuedMessageByID(ctx context.Context, arg GetChatQu
 		&i.Content,
 		&i.CreatedAt,
 		&i.ModelConfigID,
-		&i.APIKeyID,
 		&i.Position,
 		&i.CreatedBy,
 		&i.ReasoningEffort,
@@ -8279,7 +8272,7 @@ func (q *sqlQuerier) GetChatQueuedMessageByID(ctx context.Context, arg GetChatQu
 }
 
 const getChatQueuedMessageHead = `-- name: GetChatQueuedMessageHead :one
-SELECT id, chat_id, content, created_at, model_config_id, api_key_id, position, created_by, reasoning_effort FROM chat_queued_messages
+SELECT id, chat_id, content, created_at, model_config_id, position, created_by, reasoning_effort FROM chat_queued_messages
 WHERE chat_id = $1::uuid
 ORDER BY position ASC, id ASC
 LIMIT 1
@@ -8295,7 +8288,6 @@ func (q *sqlQuerier) GetChatQueuedMessageHead(ctx context.Context, chatID uuid.U
 		&i.Content,
 		&i.CreatedAt,
 		&i.ModelConfigID,
-		&i.APIKeyID,
 		&i.Position,
 		&i.CreatedBy,
 		&i.ReasoningEffort,
@@ -8304,7 +8296,7 @@ func (q *sqlQuerier) GetChatQueuedMessageHead(ctx context.Context, chatID uuid.U
 }
 
 const getChatQueuedMessages = `-- name: GetChatQueuedMessages :many
-SELECT id, chat_id, content, created_at, model_config_id, api_key_id, position, created_by, reasoning_effort FROM chat_queued_messages
+SELECT id, chat_id, content, created_at, model_config_id, position, created_by, reasoning_effort FROM chat_queued_messages
 WHERE chat_id = $1
 ORDER BY created_at ASC, id ASC
 `
@@ -8324,7 +8316,6 @@ func (q *sqlQuerier) GetChatQueuedMessages(ctx context.Context, chatID uuid.UUID
 			&i.Content,
 			&i.CreatedAt,
 			&i.ModelConfigID,
-			&i.APIKeyID,
 			&i.Position,
 			&i.CreatedBy,
 			&i.ReasoningEffort,
@@ -8343,7 +8334,7 @@ func (q *sqlQuerier) GetChatQueuedMessages(ctx context.Context, chatID uuid.UUID
 }
 
 const getChatQueuedMessagesByPosition = `-- name: GetChatQueuedMessagesByPosition :many
-SELECT id, chat_id, content, created_at, model_config_id, api_key_id, position, created_by, reasoning_effort FROM chat_queued_messages
+SELECT id, chat_id, content, created_at, model_config_id, position, created_by, reasoning_effort FROM chat_queued_messages
 WHERE chat_id = $1::uuid
 ORDER BY position ASC, id ASC
 `
@@ -8364,7 +8355,6 @@ func (q *sqlQuerier) GetChatQueuedMessagesByPosition(ctx context.Context, chatID
 			&i.Content,
 			&i.CreatedAt,
 			&i.ModelConfigID,
-			&i.APIKeyID,
 			&i.Position,
 			&i.CreatedBy,
 			&i.ReasoningEffort,
@@ -9476,7 +9466,7 @@ func (q *sqlQuerier) GetDatabaseNow(ctx context.Context) (time.Time, error) {
 
 const getLastChatMessageByRole = `-- name: GetLastChatMessageByRole :one
 SELECT
-    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, api_key_id, revision, reasoning_effort, search_tsv
+    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, revision, reasoning_effort, search_tsv
 FROM
     chat_messages
 WHERE
@@ -9519,7 +9509,6 @@ func (q *sqlQuerier) GetLastChatMessageByRole(ctx context.Context, arg GetLastCh
 		&i.RuntimeMs,
 		&i.Deleted,
 		&i.ProviderResponseID,
-		&i.APIKeyID,
 		&i.Revision,
 		&i.ReasoningEffort,
 		&i.SearchTsv,
@@ -9984,7 +9973,7 @@ WITH batch AS (
     SELECT
         (
             SELECT val
-            FROM UNNEST($4::uuid[])
+            FROM UNNEST($3::uuid[])
                 WITH ORDINALITY AS t(val, ord)
             WHERE val != '00000000-0000-0000-0000-000000000000'::uuid
             ORDER BY ord DESC
@@ -9992,7 +9981,7 @@ WITH batch AS (
         ) AS last_model_config_id,
         (
             SELECT NULLIF(val, '')::chat_reasoning_effort
-            FROM UNNEST($5::text[])
+            FROM UNNEST($4::text[])
                 WITH ORDINALITY AS t(val, ord)
             WHERE val != ''
             ORDER BY ord DESC
@@ -10016,7 +10005,6 @@ updated_chat AS (
 INSERT INTO chat_messages (
     chat_id,
     created_by,
-    api_key_id,
     model_config_id,
     reasoning_effort,
     role,
@@ -10037,31 +10025,29 @@ INSERT INTO chat_messages (
 SELECT
     $1::uuid,
     NULLIF(UNNEST($2::uuid[]), '00000000-0000-0000-0000-000000000000'::uuid),
-    NULLIF(UNNEST($3::text[]), ''),
-    NULLIF(UNNEST($4::uuid[]), '00000000-0000-0000-0000-000000000000'::uuid),
-    NULLIF(UNNEST($5::text[]), '')::chat_reasoning_effort,
-    UNNEST($6::chat_message_role[]),
-    UNNEST($7::text[])::jsonb,
-    UNNEST($8::smallint[]),
-    UNNEST($9::chat_message_visibility[]),
+    NULLIF(UNNEST($3::uuid[]), '00000000-0000-0000-0000-000000000000'::uuid),
+    NULLIF(UNNEST($4::text[]), '')::chat_reasoning_effort,
+    UNNEST($5::chat_message_role[]),
+    UNNEST($6::text[])::jsonb,
+    UNNEST($7::smallint[]),
+    UNNEST($8::chat_message_visibility[]),
+    NULLIF(UNNEST($9::bigint[]), 0),
     NULLIF(UNNEST($10::bigint[]), 0),
     NULLIF(UNNEST($11::bigint[]), 0),
     NULLIF(UNNEST($12::bigint[]), 0),
     NULLIF(UNNEST($13::bigint[]), 0),
     NULLIF(UNNEST($14::bigint[]), 0),
     NULLIF(UNNEST($15::bigint[]), 0),
-    NULLIF(UNNEST($16::bigint[]), 0),
-    UNNEST($17::boolean[]),
-    NULLIF(UNNEST($18::bigint[]), 0),
-    NULLIF(UNNEST($19::bigint[]), 0)
+    UNNEST($16::boolean[]),
+    NULLIF(UNNEST($17::bigint[]), 0),
+    NULLIF(UNNEST($18::bigint[]), 0)
 RETURNING
-    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, api_key_id, revision, reasoning_effort, search_tsv
+    id, chat_id, model_config_id, created_at, role, content, visibility, input_tokens, output_tokens, total_tokens, reasoning_tokens, cache_creation_tokens, cache_read_tokens, context_limit, compressed, created_by, content_version, total_cost_micros, runtime_ms, deleted, provider_response_id, revision, reasoning_effort, search_tsv
 `
 
 type InsertChatMessagesParams struct {
 	ChatID              uuid.UUID               `db:"chat_id" json:"chat_id"`
 	CreatedBy           []uuid.UUID             `db:"created_by" json:"created_by"`
-	APIKeyID            []string                `db:"api_key_id" json:"api_key_id"`
 	ModelConfigID       []uuid.UUID             `db:"model_config_id" json:"model_config_id"`
 	ReasoningEffort     []string                `db:"reasoning_effort" json:"reasoning_effort"`
 	Role                []ChatMessageRole       `db:"role" json:"role"`
@@ -10084,7 +10070,6 @@ func (q *sqlQuerier) InsertChatMessages(ctx context.Context, arg InsertChatMessa
 	rows, err := q.db.QueryContext(ctx, insertChatMessages,
 		arg.ChatID,
 		pq.Array(arg.CreatedBy),
-		pq.Array(arg.APIKeyID),
 		pq.Array(arg.ModelConfigID),
 		pq.Array(arg.ReasoningEffort),
 		pq.Array(arg.Role),
@@ -10131,7 +10116,6 @@ func (q *sqlQuerier) InsertChatMessages(ctx context.Context, arg InsertChatMessa
 			&i.RuntimeMs,
 			&i.Deleted,
 			&i.ProviderResponseID,
-			&i.APIKeyID,
 			&i.Revision,
 			&i.ReasoningEffort,
 			&i.SearchTsv,
@@ -10150,17 +10134,16 @@ func (q *sqlQuerier) InsertChatMessages(ctx context.Context, arg InsertChatMessa
 }
 
 const insertChatQueuedMessage = `-- name: InsertChatQueuedMessage :one
-INSERT INTO chat_queued_messages (chat_id, content, model_config_id, reasoning_effort, api_key_id, created_by)
+INSERT INTO chat_queued_messages (chat_id, content, model_config_id, reasoning_effort, created_by)
 SELECT
     $1::uuid,
     $2::jsonb,
     $3::uuid,
     $4::chat_reasoning_effort,
-    $5::text,
     chats.owner_id
 FROM chats
 WHERE chats.id = $1::uuid
-RETURNING id, chat_id, content, created_at, model_config_id, api_key_id, position, created_by, reasoning_effort
+RETURNING id, chat_id, content, created_at, model_config_id, position, created_by, reasoning_effort
 `
 
 type InsertChatQueuedMessageParams struct {
@@ -10168,7 +10151,6 @@ type InsertChatQueuedMessageParams struct {
 	Content         json.RawMessage         `db:"content" json:"content"`
 	ModelConfigID   uuid.NullUUID           `db:"model_config_id" json:"model_config_id"`
 	ReasoningEffort NullChatReasoningEffort `db:"reasoning_effort" json:"reasoning_effort"`
-	APIKeyID        sql.NullString          `db:"api_key_id" json:"api_key_id"`
 }
 
 // Legacy queue insertion path. When no caller-supplied creator exists,
@@ -10180,7 +10162,6 @@ func (q *sqlQuerier) InsertChatQueuedMessage(ctx context.Context, arg InsertChat
 		arg.Content,
 		arg.ModelConfigID,
 		arg.ReasoningEffort,
-		arg.APIKeyID,
 	)
 	var i ChatQueuedMessage
 	err := row.Scan(
@@ -10189,7 +10170,6 @@ func (q *sqlQuerier) InsertChatQueuedMessage(ctx context.Context, arg InsertChat
 		&i.Content,
 		&i.CreatedAt,
 		&i.ModelConfigID,
-		&i.APIKeyID,
 		&i.Position,
 		&i.CreatedBy,
 		&i.ReasoningEffort,
@@ -10198,16 +10178,15 @@ func (q *sqlQuerier) InsertChatQueuedMessage(ctx context.Context, arg InsertChat
 }
 
 const insertChatQueuedMessageWithCreator = `-- name: InsertChatQueuedMessageWithCreator :one
-INSERT INTO chat_queued_messages (chat_id, content, model_config_id, reasoning_effort, api_key_id, created_by)
+INSERT INTO chat_queued_messages (chat_id, content, model_config_id, reasoning_effort, created_by)
 VALUES (
     $1::uuid,
     $2::jsonb,
     $3::uuid,
     $4::chat_reasoning_effort,
-    $5::text,
-    $6::uuid
+    $5::uuid
 )
-RETURNING id, chat_id, content, created_at, model_config_id, api_key_id, position, created_by, reasoning_effort
+RETURNING id, chat_id, content, created_at, model_config_id, position, created_by, reasoning_effort
 `
 
 type InsertChatQueuedMessageWithCreatorParams struct {
@@ -10215,7 +10194,6 @@ type InsertChatQueuedMessageWithCreatorParams struct {
 	Content         json.RawMessage         `db:"content" json:"content"`
 	ModelConfigID   uuid.NullUUID           `db:"model_config_id" json:"model_config_id"`
 	ReasoningEffort NullChatReasoningEffort `db:"reasoning_effort" json:"reasoning_effort"`
-	APIKeyID        sql.NullString          `db:"api_key_id" json:"api_key_id"`
 	CreatedBy       uuid.UUID               `db:"created_by" json:"created_by"`
 }
 
@@ -10228,7 +10206,6 @@ func (q *sqlQuerier) InsertChatQueuedMessageWithCreator(ctx context.Context, arg
 		arg.Content,
 		arg.ModelConfigID,
 		arg.ReasoningEffort,
-		arg.APIKeyID,
 		arg.CreatedBy,
 	)
 	var i ChatQueuedMessage
@@ -10238,7 +10215,6 @@ func (q *sqlQuerier) InsertChatQueuedMessageWithCreator(ctx context.Context, arg
 		&i.Content,
 		&i.CreatedAt,
 		&i.ModelConfigID,
-		&i.APIKeyID,
 		&i.Position,
 		&i.CreatedBy,
 		&i.ReasoningEffort,
@@ -10707,7 +10683,7 @@ WHERE id = (
     ORDER BY cqm.created_at ASC, cqm.id ASC
     LIMIT 1
 )
-RETURNING id, chat_id, content, created_at, model_config_id, api_key_id, position, created_by, reasoning_effort
+RETURNING id, chat_id, content, created_at, model_config_id, position, created_by, reasoning_effort
 `
 
 func (q *sqlQuerier) PopNextQueuedMessage(ctx context.Context, chatID uuid.UUID) (ChatQueuedMessage, error) {
@@ -10719,7 +10695,6 @@ func (q *sqlQuerier) PopNextQueuedMessage(ctx context.Context, chatID uuid.UUID)
 		&i.Content,
 		&i.CreatedAt,
 		&i.ModelConfigID,
-		&i.APIKeyID,
 		&i.Position,
 		&i.CreatedBy,
 		&i.ReasoningEffort,
