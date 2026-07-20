@@ -292,6 +292,16 @@ export interface AIGatewayKey {
  */
 export const AIGatewayKeyHeader = "X-Coder-AI-Governance-Gateway-Key";
 
+// From codersdk/aibridge.go
+/**
+ * AIGroupBudget is an AI spend limit and the tier that produced it. Both
+ * fields are always populated together.
+ */
+export interface AIGroupBudget {
+	readonly spend_limit_micros: number;
+	readonly limit_source: AIBudgetLimitSource;
+}
+
 // From codersdk/aiproviders.go
 /**
  * AIProvider represents an AI provider configuration row as returned
@@ -5174,6 +5184,42 @@ export interface GroupArguments {
 	 * If not set, all groups will be returned.
 	 */
 	readonly GroupIDs: readonly string[];
+}
+
+// From codersdk/aibridge.go
+/**
+ * GroupMemberAISpend is a single member's AI spend attributed to the queried
+ * group in the current budget period.
+ */
+export interface GroupMemberAISpend {
+	readonly user_id: string;
+	/**
+	 * EffectiveGroupID is the user's effective budget group within the queried
+	 * group's organization. Null when no effective budget group is visible in
+	 * this organization, including when the user's budget resolves to a group
+	 * in another organization.
+	 */
+	readonly effective_group_id: string | null;
+	/**
+	 * GroupBudget is the budget when the queried group is this user's
+	 * effective budget source. Null when the user's budget resolves to another
+	 * group or no budget applies to the user.
+	 */
+	readonly group_budget: AIGroupBudget | null;
+	/**
+	 * GroupSpendMicros is the user's spend attributed to the queried group
+	 * over the current budget period.
+	 */
+	readonly group_spend_micros: number;
+}
+
+// From codersdk/aibridge.go
+/**
+ * GroupMembersAISpend reports per-member AI spend attributed to a specific
+ * group in the active budget period.
+ */
+export interface GroupMembersAISpend extends AISpendPeriodWindow {
+	readonly members: readonly GroupMemberAISpend[];
 }
 
 // From codersdk/groups.go
